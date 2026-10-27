@@ -1,0 +1,132 @@
+{
+ "format": "zen-tts-models",
+ "version": 2,
+ "default": "marine",
+ "sdk": ">=1.0.0",
+ "voices": {
+  "marine": {
+   "id": "marine",
+   "name": {
+    "ja": "全力 マリン",
+    "en": "Zenryoku Marine"
+   },
+   "model": "marine-1.0",
+   "dirs": {
+    "tts": "tts",
+    "decoder": "decoder"
+   }
+  },
+  "hashiro": {
+   "id": "hashiro",
+   "name": {
+    "ja": "全力 ハシロウ",
+    "en": "Zenryoku Hashiro"
+   },
+   "model": "hashiro-1.0",
+   "dirs": {
+    "tts": "voices/hashiro/tts",
+    "decoder": "voices/hashiro/decoder"
+   }
+  },
+  "kai": {
+   "id": "kai",
+   "name": {
+    "ja": "全力 カイ",
+    "en": "Zenryoku Kai"
+   },
+   "model": "kai-1.0",
+   "dirs": {
+    "tts": "voices/kai/tts",
+    "decoder": "voices/kai/decoder"
+   }
+  },
+  "kikka": {
+   "id": "kikka",
+   "name": {
+    "ja": "全力 キッカ",
+    "en": "Zenryoku Kikka"
+   },
+   "model": "kikka-1.0",
+   "dirs": {
+    "tts": "voices/kikka/tts",
+    "decoder": "voices/kikka/decoder"
+   }
+  }
+ },
+ "files": {
+  "decoder/nsf.bin": {
+   "bytes": 19977220,
+   "sha256": "f29a067c941b6707e498dacb01204742f062e1b8056f7a62b649537b2a9babd3"
+  },
+  "decoder/nsf.json": {
+   "bytes": 14325,
+   "sha256": "20ee3618c8f2adca88350456a3865a2168434fcc980ee7260dae247615624e2f"
+  },
+  "tts/own.bin": {
+   "bytes": 11065344,
+   "sha256": "17be4d9b9a1689bd102fc04fb47b12b63c72a8cdcf0a680e37944bf5aca38040"
+  },
+  "tts/own.json": {
+   "bytes": 83246,
+   "sha256": "70d7914d76a40ea2d21d2a85431c672614289ae74e3e41c614ce8b7309b5c674"
+  },
+  "voices/hashiro/decoder/nsf.bin": {
+   "bytes": 19977220,
+   "sha256": "eef9842618bd3488a35f8b50e61d050161a4298f2af100d87008ecc5ac8f9a42"
+  },
+  "voices/hashiro/decoder/nsf.json": {
+   "bytes": 10813,
+   "sha256": "9c451b00ac11bdc84a8f669e47cf374808710e3d4c708c23f195ef27f7452e45"
+  },
+  "voices/hashiro/tts/own.bin": {
+   "bytes": 11065344,
+   "sha256": "734b509d9967bb30b7c294924bfe16c4783f2a657ac0fa6df351e2bc1695e412"
+  },
+  "voices/hashiro/tts/own.json": {
+   "bytes": 63212,
+   "sha256": "61b568f5f8bdf8cb825473878d20b2854a1b4725c6b6758d354a83a3f16a4862"
+  },
+  "voices/kai/decoder/nsf.bin": {
+   "bytes": 19977220,
+   "sha256": "1264a80a0b02d3e909a7d43c65bdf4601480f464d8adb5589c2163b334d9b437"
+  },
+  "voices/kai/decoder/nsf.json": {
+   "bytes": 10794,
+   "sha256": "42bf96c64056bb55687b49ce87f31566fe3c2543e954e688833e8d5c88a409f2"
+  },
+  "voices/kai/tts/own.bin": {
+   "bytes": 11065344,
+   "sha256": "b778fd5beba27c7c8e0ff5cb523ec17747086bbc8c5ed927aa719ad3877a044a"
+  },
+  "voices/kai/tts/own.json": {
+   "bytes": 63213,
+   "sha256": "148b7262df36fd78af27ac32ca441491c29f4f8fb829df335324671d1fbe8354"
+  },
+  "voices/kikka/decoder/nsf.bin": {
+   "bytes": 19977220,
+   "sha256": "cbc2b70dc43423c6fa12be2e36acde32977b6dce1bd17a068fb09d6f65efcd2a"
+  },
+  "voices/kikka/decoder/nsf.json": {
+   "bytes": 10792,
+   "sha256": "1346fc3ac4066c35bda46ed33e27a2f57d88386d4b4452fdd60079ce5d7727b4"
+  },
+  "voices/kikka/tts/own.bin": {
+   "bytes": 11065344,
+   "sha256": "497cfabbcd3b0666c963b0f9e33d2671564966d3b109d5d053a59e800017f635"
+  },
+  "voices/kikka/tts/own.json": {
+   "bytes": 63215,
+   "sha256": "09de9481b74df07d52d135fccf67d3709f4a89e6d1ac7a9765a8b724d77b11e3"
+  }
+ },
+ "sizes": {
+  "perVoice": {
+   "marine": 31140135,
+   "hashiro": 31116589,
+   "kai": 31116571,
+   "kikka": 31116571
+  },
+  "totalBytes": 124489866
+ },
+ "note": "重み（tts/own.bin、decoder/nsf.bin）は models/ に同梱（4 voices、124,489,866 bytes）。npm パッケージには含まれない。bytes と sha256 は各ファイルの実値。"
+}

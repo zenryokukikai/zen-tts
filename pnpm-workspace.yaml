@@ -1,0 +1,6 @@
+# Supply-chain safety: install a package version only after it has been public for 7 days (minutes).
+minimumReleaseAge: 10080
+
+# Single-package repo: the root is the only project (older pnpm requires this field when the file exists).
+packages:
+  - '.'

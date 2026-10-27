@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>聞き比べ | ZEN-TTS</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 1.5rem auto; max-width: 960px; padding: 0 1rem; line-height: 1.6; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #ccc; padding: .4rem .5rem; vertical-align: top; text-align: left; }
+  th { background: #f4f4f4; }
+  audio { width: 220px; max-width: 100%; }
+  .credit { font-size: .85em; color: #555; }
+  @media (prefers-color-scheme: dark) { body { background: #111; color: #eee; } th { background: #222; } td, th { border-color: #444; } .credit { color: #aaa; } }
+</style>
+<h1>聞き比べ</h1>
+<p>どの TTS も同じ文を、それぞれの標準の声で読ませました。音量だけをそろえています（EBU R128 で -20 LUFS、全部同じ処理）。音声は Opus（WebM）です。Opus は 48 kHz で再生されます。</p>
+<h2>同じ文を読ませた比較</h2>
+<table id="cmp"><thead><tr><th>TTS</th><th>短い文</th><th>中くらいの文</th><th>感情を込めたい文</th><th>クレジット・ライセンス</th></tr></thead><tbody></tbody></table>
+<p class="credit">文：短い文「夕方から風が強くなりそうです。」／中くらいの文「全国的に晴れて、昼間は過ごしやすい気温になる見込みです。」／感情を込めたい文「えっ、本当ですか？ずっと待っていたので、とてもうれしいです。」</p>
+<h2>ZEN-TTS の機能サンプル</h2>
+<table id="ours"><thead><tr><th>内容</th><th>音声</th></tr></thead><tbody></tbody></table>
+<script>
+const M = [
+  ['ZEN-TTS', 'ours', 'ZEN-TTS ライセンス（LICENSE.md）'],
+  ['VOICEVOX（ずんだもん ノーマル）', 'voicevox', 'VOICEVOX:ずんだもん'],
+  ['AivisSpeech（コハク ノーマル）', 'aivis', 'AivisSpeech: コハク（ACML 1.0）'],
+  ['Supertonic 3（F1）', 'supertonic', 'Supertonic 3 © Supertone Inc.（OpenRAIL-M）'],
+  ['Kokoro-82M（jf_alpha）', 'kokoro', 'Kokoro-82M（Apache-2.0）'],
+  ['MeloTTS（日本語 JP）', 'melo', 'MeloTTS © MyShell.ai（MIT）'],
+];
+const tb = document.querySelector('#cmp tbody');
+for (const [name, dir, credit] of M) {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td>${name}</td>` + ['short', 'medium', 'emotion'].map((k) => `<td><audio controls preload="none" src="${dir}/${k}.webm"></audio></td>`).join('') + `<td class="credit">${credit}</td>`;
+  tb.append(tr);
+}
+const O = [
+  ['感情を混ぜる（喜び 70 ＋ 平静 30）', 'mix-happy70'],
+  ['文の途中で感情を変える（悲しみ → 怒り、途中で一気に切り替え）「ずっと信じて待っていたのに、連絡ひとつないまま、約束の日が過ぎてしまいました。悲しくて、しばらく何も手につきませんでした。でも、もうこれ以上は我慢できません。」', 'gradation-sad-to-angry'],
+  ['比較用：同じ文を悲しみだけで読み上げ', 'gradation-sad-only'],
+  ['1 音だけ高さを変える：直す前', 'pitch-before'],
+  ['1 音だけ高さを変える：「すごしやすい」の「や」を +3 半音', 'pitch-after-plus3st'],
+];
+const ob = document.querySelector('#ours tbody');
+for (const [label, f] of O) { const tr = document.createElement('tr'); tr.innerHTML = `<td>${label}</td><td><audio controls preload="none" src="ours/${f}.webm"></audio></td>`; ob.append(tr); }
+</script>
+</html>

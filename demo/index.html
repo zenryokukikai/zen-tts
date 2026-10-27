@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f2a37">
+<title>ZEN-TTS デモ｜スタイル（感情）をグラデーションで制御できる TTS</title>
+<style>
+:root { --bg: #f3f4f6; --card: #fff; --ink: #1f2937; --sub: #6b7280; --line: #e5e7eb; --accent: #2563eb; }
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif; -webkit-text-size-adjust: 100%; }
+button, input, textarea { font: inherit; }
+.appbar { position: sticky; top: 0; z-index: 10; background: #1f2a37; color: #fff; padding: calc(10px + env(safe-area-inset-top)) 16px 10px; font-weight: 700; }
+main { max-width: 640px; margin: 0 auto; padding: 16px 16px calc(32px + env(safe-area-inset-bottom)); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin: 0 0 14px; }
+h2 { font-size: 1rem; margin: 0 0 10px; }
+textarea { width: 100%; min-height: 110px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 16px; line-height: 1.6; resize: vertical; }
+.emo { display: grid; grid-template-columns: 6.5em 1fr auto; align-items: center; gap: 10px; min-height: 44px; }
+.emo label { font-weight: 600; }
+.emo input[type=range], .strength input[type=range] { width: 100%; accent-color: var(--accent); }
+.num { display: inline-flex; align-items: center; gap: 2px; }
+.num input { width: 4.2em; padding: 6px; border: 1px solid var(--line); border-radius: 8px; text-align: right; font-size: 16px; }
+.mix, .note { color: var(--sub); font-size: .85rem; margin: 8px 0 0; line-height: 1.5; }
+.strength { display: grid; grid-template-columns: 6.5em 1fr 4.2em; align-items: center; gap: 10px; min-height: 44px; margin-top: 6px; border-top: 1px solid var(--line); padding-top: 8px; }
+.strength output { text-align: right; }
+.actions { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
+.btn { min-height: 48px; border-radius: 12px; border: 1px solid var(--line); background: #fff; color: var(--ink); font-weight: 700; cursor: pointer; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.small { min-height: 40px; font-weight: 600; font-size: .9rem; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+#status { margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; background: #eef2ff; color: #1e3a8a; font-size: .92rem; min-height: 1.5em; }
+#status[data-kind=error] { background: #fef2f2; color: #991b1b; }
+.mode { display: flex; align-items: center; gap: 10px; min-height: 44px; font-weight: 600; }
+.mode input { width: 22px; height: 22px; accent-color: var(--accent); }
+.mode + .note { margin: -6px 0 6px 32px; }
+#curve-card[hidden] { display: none; }
+.curve-title { font-weight: 600; margin: 12px 0 6px; }
+.curves { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.curve-opt { position: relative; display: grid; justify-items: center; gap: 4px; padding: 8px 4px; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-size: .8rem; line-height: 1.3; text-align: center; cursor: pointer; min-height: 44px; }
+.curve-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.curve-opt svg { width: 100%; max-width: 72px; height: auto; }
+.curve-opt svg rect { fill: #f9fafb; stroke: var(--line); }
+.curve-opt svg path { fill: none; stroke: #64748b; stroke-width: 2.2; stroke-linejoin: round; }
+.curve-opt:has(input:checked) { border-color: var(--accent); background: #eff6ff; box-shadow: 0 0 0 2px #bfdbfe; font-weight: 700; }
+.curve-opt:has(input:checked) svg path { stroke: var(--accent); }
+.curve-opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+#curve-preview { margin: 12px 0 0; }
+#curve-preview svg { width: 100%; height: auto; display: block; }
+#curve-preview .range { fill: #eff6ff; }
+#curve-preview .axis { stroke: var(--line); stroke-dasharray: 3 3; }
+#curve-preview .curve { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linejoin: round; }
+#curve-preview text { font-size: 11px; fill: var(--sub); }
+.range2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.range2 label { display: grid; gap: 2px; font-size: .9rem; color: var(--sub); }
+.range2 input { min-width: 0; min-height: 40px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; font-size: 16px; }
+#curve-plan { color: var(--sub); font-size: .85rem; margin: 8px 0 0; }
+#samples { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 6px; }
+#samples:empty { display: none; }
+#samples li { padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: #fff; line-height: 1.5; }
+#samples .ptext { display: block; }
+#samples .pmix { display: block; font-size: .8rem; color: var(--sub); }
+.tune-card[hidden] { display: none; }
+#tune-status { margin: 10px 0 0; padding: 10px 12px; border-radius: 10px; background: #eef2ff; color: #1e3a8a; font-size: .92rem; white-space: pre-line; }
+#tune-status[data-kind=error] { background: #fef2f2; color: #991b1b; }
+#tune-status:empty { display: none; }
+.row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 10px; }
+#tune-reading { font-size: .9rem; color: var(--ink); margin: 10px 0 6px; word-break: break-all; }
+#tune-chart { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 4px 0; }
+#tune-plot { display: block; touch-action: none; }
+#tune-plot .grid { stroke: #f1f5f9; } #tune-plot .zero { stroke: #cbd5e1; }
+#tune-plot .phrase { stroke: #f59e0b; stroke-dasharray: 3 3; }
+#tune-plot .before { fill: none; stroke: #9ca3af; stroke-width: 2; stroke-dasharray: 4 3; }
+#tune-plot .now { fill: none; stroke: var(--accent); stroke-width: 2.5; }
+#tune-plot .pt { fill: var(--accent); stroke: #fff; stroke-width: 2; cursor: ns-resize; }
+#tune-plot .pt.edited { fill: #dc2626; } #tune-plot .pt.sel { stroke: #111827; stroke-width: 3; }
+#tune-sounds { display: flex; }
+.snd { width: 44px; flex: none; display: grid; justify-items: center; align-content: start; gap: 2px; padding: 4px 0; border: 0; border-radius: 6px; background: none; font: inherit; color: inherit; cursor: pointer; min-height: 88px; }
+.snd.brk { border-left: 2px dashed #f59e0b; border-radius: 0; }
+.snd b { font-size: 15px; } .snd sup { color: #dc2626; }
+.snd.sel { background: #dbeafe; }
+.snd .hl { font-size: 11px; padding: 1px 5px; border-radius: 6px; background: #e5e7eb; color: #374151; }
+.snd .hl.h { background: #1d4ed8; color: #fff; }
+.snd i { display: block; width: 16px; background: #93c5fd; border-radius: 3px 3px 0 0; margin-top: auto; }
+.snd i.edited { background: #f87171; }
+.snd small { font-size: 10px; color: #b91c1c; min-height: 12px; }
+.snd.punct { cursor: default; }
+.legend { color: var(--sub); font-size: .8rem; margin: 6px 0 0; line-height: 1.5; }
+#tune-selected { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 10px 0 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; min-height: 52px; }
+#tune-selected .hint { color: var(--sub); font-size: .85rem; }
+#tune-selected .sk { font-size: 1.2rem; }
+#tune-selected .ctl { display: inline-flex; align-items: center; gap: 6px; }
+#tune-selected button { width: 44px; height: 44px; border-radius: 10px; border: 1px solid var(--line); background: #fff; font-size: 1.2rem; font-weight: 700; }
+#tune-selected output { min-width: 3em; text-align: center; }
+#tune-phrases { display: grid; gap: 6px; margin-top: 6px; }
+.phr { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 10px; }
+.phr.edited { border-color: #f87171; }
+.phr select { min-height: 40px; font-size: 16px; max-width: 12em; }
+.sub-title { font-weight: 600; margin: 14px 0 4px; }
+.field2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.field2 label { display: grid; gap: 2px; font-size: .88rem; color: var(--sub); }
+.field2 input, #dict-list input { min-width: 0; min-height: 42px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; font-size: 16px; }
+#tune-sentence { width: 100%; min-height: 42px; font-size: 16px; }
+#dict-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+#dict-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; }
+#dict-list .w { display: grid; } #dict-list .r { color: var(--sub); font-size: .9rem; } #dict-list small { color: var(--sub); font-size: .78rem; }
+#dict-list .ops { display: flex; gap: 6px; }
+#dict-list .tone { flex: 1 1 auto; display: flex; justify-content: center; }
+#dict-list .sketch polyline { fill: none; stroke: var(--accent); stroke-width: 2; }
+#dict-list .sketch circle { fill: var(--accent); }
+#dict-list .sketch .fall { stroke: #dc2626; stroke-dasharray: 2 2; }
+#dict-list label { display: grid; font-size: .8rem; color: var(--sub); flex: 1 1 8em; }
+.btn.danger { color: #b91c1c; }
+.btn.small { padding: 0 12px; }
+label.btn { display: inline-flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+label.btn input { position: absolute; inset: 0; opacity: 0; }
+@media (min-width: 720px) { main { padding-top: 28px; } }
+</style>
+</head>
+<body>
+<div class="appbar">ZEN-TTS デモ｜スタイル（感情）をグラデーションで制御できる TTS</div>
+<main>
+<section class="card" id="voice">
+<h2>声</h2>
+<label class="mode"><input type="radio" name="voice" value="marine" checked>マリン</label>
+<label class="mode"><input type="radio" name="voice" value="hashiro">ハシロウ</label>
+<label class="mode"><input type="radio" name="voice" value="kai">カイ</label>
+<label class="mode"><input type="radio" name="voice" value="kikka">キッカ</label>
+</section>
+<section class="card">
+<h2>話させたい文</h2>
+<textarea id="text" placeholder="ここに文を入力">お待たせしました。ご予約の変更でしたら、こちらで承ります。</textarea>
+</section>
+<section class="card">
+<h2 id="start-title">感情の配合</h2>
+<div id="emotions"></div>
+<p class="mix" id="mix"></p>
+<p class="note">各感情の値は割合として混ぜます（合計が 100% になるように自動で換算します）。すべて 0 のときは平静です。</p>
+<div class="strength"><label for="strength">抑揚の強さ</label><input type="range" id="strength" min="0.5" max="2" step="0.1" value="1"><output id="strength-out">1.0 倍</output></div>
+<button class="btn small" id="reset" type="button" style="margin-top:10px;width:100%">初期値に戻す</button>
+</section>
+<section class="card" id="curve-card" hidden>
+<h2>おわりの感情の配合</h2>
+<div id="emotions-end"></div>
+<p class="mix" id="mix-end"></p>
+<p class="curve-title" id="curves-title">変わり方</p>
+<div class="curves" id="curves" role="radiogroup" aria-labelledby="curves-title"></div>
+<div class="range2"><label>変わり始め（文の %）<input type="number" id="curve-from" inputmode="numeric" min="0" max="100" step="5" value="20"></label><label>変わり終わり（文の %）<input type="number" id="curve-to" inputmode="numeric" min="0" max="100" step="5" value="80"></label></div>
+<p id="curve-plan"></p>
+<div id="curve-preview"></div>
+</section>
+<section class="card">
+<h2>話し方</h2>
+<label class="mode"><input type="radio" name="mode" value="whole" checked>まとめて作る</label>
+<p class="note">文全体を 1 つの配合で作ってから再生します。</p>
+<label class="mode"><input type="radio" name="mode" value="curve" id="curve-mode">文の途中で変化（はじめ→おわり）</label>
+<p class="note">はじめの配合から、おわりの配合へ、選んだ変わり方で文の中で変えます。</p>
+</section>
+<section class="card" id="backend">
+<h2>作る場所</h2>
+<label class="mode"><input type="radio" name="backend" value="auto" checked>自動（GPU があれば GPU、なければ CPU）</label>
+<label class="mode"><input type="radio" name="backend" value="webgpu">GPU（WebGPU）</label>
+<label class="mode"><input type="radio" name="backend" value="cpu">CPU（WebAssembly）</label>
+<p class="note" id="backend-now"></p>
+<p class="note">どちらも同じモデル・同じ手順で、この端末の中だけで作ります。CPU でも、話す長さより十分速く作れます。</p>
+</section>
+<div class="actions">
+<button class="btn primary" id="speak" type="button">話す</button>
+<button class="btn" id="stop" type="button" disabled>止める</button>
+</div>
+<div class="row2" style="grid-template-columns:1fr">
+<button class="btn small" id="download" type="button" disabled>音声を保存（WAV）</button>
+</div>
+<p id="status" role="status" aria-live="polite">準備しています…</p>
+<ol id="samples" aria-label="文の位置ごとの配合"></ol>
+<section class="card" id="tune-card">
+<h2>読み方と高さを直す</h2>
+<p class="note">上の文を、今の感情の設定（配合・文の途中で変化・抑揚の強さ）で読んで、音ごとの読み・高さ・長さを見せます。感情の設定を変えると、直したところはそのままで読み直します。直したら「直して読む」で聞き比べられます。</p>
+<div id="tune-sentence-row" hidden><label class="sub-title" for="tune-sentence">直す文</label><select id="tune-sentence"></select></div>
+<button class="btn primary" id="tune-analyze" type="button" style="width:100%;margin-top:10px">読みと高さを見る</button>
+<div id="tune-body" hidden>
+<p id="tune-reading"></p>
+<div id="tune-chart"><svg id="tune-plot" height="170" role="img" aria-label="音ごとの高さ"></svg><div id="tune-sounds"></div></div>
+<p class="legend">灰色の点線＝直す前の高さ、青＝今の高さ（赤い点が直した音）。点を上下に動かすと高さが変わります。スマホでは音をタップして、下の − ＋ で直せます。⌝＝そこで高さが下がる音、オレンジの線＝区切り、棒＝長さ。</p>
+<div id="tune-selected"></div>
+<p class="sub-title">区切りごとの、高さが下がる位置</p>
+<div id="tune-phrases"></div>
+<div class="row3"><button class="btn small" id="tune-play-before" type="button" disabled>直す前</button><button class="btn small" id="tune-play-after" type="button" disabled>直した後</button><button class="btn small" id="tune-reset" type="button" disabled>元に戻す</button></div>
+<button class="btn primary" id="tune-make" type="button" style="width:100%;margin-top:10px" disabled>直して読む</button>
+</div>
+<p class="sub-title">語の読みとイントネーションを辞書に登録</p>
+<p class="note" style="margin-top:0">語の書き方と読みを入れて「読みを試す」を押すと、その語だけを上の図で読みます。高さ・長さ・下がる位置を直して「辞書に登録」を押すと、読みと高さの形・長さをこのブラウザに保存します。高さは「語の中での上がり下がり」として保存するので、どの感情で読んでもその形になります。文を読んだあとに登録すると、文の中のその語の形を保存します。</p>
+<div class="field2"><label>書き方（表記）<input id="dict-surface" type="text" placeholder="例：全力機械" autocomplete="off"></label><label>読み（ひらがな・カタカナ）<input id="dict-reading" type="text" placeholder="例：ぜんりょくきかい" autocomplete="off"></label></div>
+<div class="row2"><button class="btn small" id="dict-try" type="button">読みを試す</button><button class="btn small primary" id="dict-save" type="button" disabled>辞書に登録</button></div>
+<p id="tune-status" role="status" aria-live="polite"></p>
+</section>
+<section class="card" id="dict-card">
+<h2>このブラウザの辞書 <small id="dict-count" style="font-weight:400;color:var(--sub)"></small></h2>
+<p class="note" style="margin-top:0">語ごとに、保存した高さの形を小さな図で出します（赤い点線＝高さが下がるところ）。「直す」で、その語だけを上の図で開いて直せます。辞書はこのブラウザの中だけに保存します。サーバーには送りません。ほかのブラウザで使うときは、ファイルに書き出して、向こうで読み込んでください。</p>
+<ul id="dict-list"></ul>
+<div class="row2"><button class="btn small" id="dict-export" type="button">ファイルに書き出す</button><label class="btn small">ファイルから読み込む<input id="dict-import" type="file" accept="application/json,.json"></label></div>
+</section>
+<p class="note">声はこの端末のブラウザの中だけで作ります（GPU の WebGPU か、CPU の WebAssembly）。文章や辞書はどこにも送りません。初回は声のデータ（約 31MB）を読み込みます。</p>
+<footer class="note" style="margin-top:20px">音声合成：ZEN-TTS（<a href="https://zenryokukikai.com">https://zenryokukikai.com</a>） / Speech synthesis: ZEN-TTS — 全力機械 Zenryoku Kikai Inc.</footer>
+</main>
+<script type="module" src="../dist/demo.js"></script>
+</body>
+</html>

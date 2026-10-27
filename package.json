@@ -1,0 +1,57 @@
+{
+  "name": "zen-tts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ZEN-TTS: Japanese text-to-speech whose style (emotion) can be controlled as a gradation: in the browser (WebGPU or CPU via WebAssembly) and on Node.js (CPU)",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "serve": "python3 -m http.server 8080",
+    "build:wasm": "node scripts/build-cpu-wasm.mjs",
+    "check": "node scripts/demo-check.mjs",
+    "prepare": "tsc -p tsconfig.json",
+    "build:native": "sh native/x86/build-all.sh",
+    "test": "tsc -p tsconfig.json && node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "playwright": "~1.63.0",
+    "typescript": "^7.0.2"
+  },
+  "packageManager": "pnpm@12.14.0",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "node": "./dist/node/index.js",
+      "default": "./dist/node/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/version.js",
+    "dist/version.d.ts",
+    "dist/runtime/**/*.js",
+    "dist/runtime/**/*.d.ts",
+    "dist/node/**/*.js",
+    "dist/node/**/*.d.ts",
+    "cpu/tts-cpu.wasm",
+    "native/tts-cpu.c",
+    "native/x86/*.c",
+    "native/x86/*.h",
+    "native/x86/*.sh",
+    "LICENSE.md",
+    "THIRD_PARTY_NOTICES.md",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=26.12.1"
+  }
+}
