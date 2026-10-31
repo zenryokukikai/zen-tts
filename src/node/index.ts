@@ -17,6 +17,7 @@ import type { OwnSpeakOptions, OwnSpeakResult } from '../runtime/tts-own-device.
 import { withBuiltinDict } from '../runtime/builtin-dict.js';
 import { curveFn, curvePoints, engineOptionsOf, splitSentences, type SpeakOptions } from '../runtime/speak-options.js';
 import { nodeApis, type NodeApis } from './node-api.js';
+import { g2pMismatch, ownFromZtm, parseZtm, vocoderFromZtm, type G2pMeta, type ZtmHeader } from '../runtime/ztm.js';
 
 export { emotionNames, neutralBlend, type EmotionBlend, type EmotionName } from '../runtime/emotion.js';
 export { emotionBlend, splitSentences, type EmotionAmounts, type SpeakOptions } from '../runtime/speak-options.js';
@@ -25,7 +26,8 @@ export type { OwnDictEntry as DictEntry, OwnDictSettings as DictSettings } from 
 export { DEFAULT_OWN_DICT_SETTINGS as DEFAULT_DICT_SETTINGS } from '../runtime/tts-own-prosody.js';
 
 export const SAMPLE_RATE = 44100;
-export { VERSION, VOICE, VOICES, voiceDirs, type VoiceId } from '../version.js';
+export { VERSION, VOICE, VOICES, ZTM_BASE_URL, voiceDirs, ztmUrl, type VoiceId } from '../version.js';
+export { parseZtm, type ZtmHeader } from '../runtime/ztm.js';
 import { voiceDirs, type VoiceId } from '../version.js';
 
 /** The kernel build in use: a native x86-64 build, or the WebAssembly SIMD build. */
@@ -34,11 +36,15 @@ export type TtsKernel = 'avx512' | 'avx2' | 'sse41' | 'wasm';
 export type NodeTtsBackend = 'auto' | 'native' | 'wasm';
 
 export interface NodeLoadOptions {
-  /** Directory with tts/own.{json,bin} and decoder/nsf.{json,bin} (default: ./models of the working directory). */
+  /** With model: the directory that holds g2p/ (default: the package's own models/). With voice (the 1.0.0 layout): the
+   *  directory with tts/own.{json,bin} and decoder/nsf.{json,bin} (default: ./models of the working directory). */
   modelsPath?: string;
   /** The voice (default 'marine'): 'marine' reads tts/ and decoder/, another id voices/<id>/tts/ and voices/<id>/decoder/
    *  under modelsPath (voiceDirs). */
   voice?: VoiceId;
+  /** A voice packed in one file (.ztm, docs/ztm-format.md): a local path, or an http(s) URL (downloaded with fetch, e.g.
+   *  ztmUrl('kikka')). The G2P is read from <modelsPath>/g2p/. Overrides voice. */
+  model?: string;
   /** default 'auto' */
   backend?: NodeTtsBackend;
   /** Force one native build: 'avx512' | 'avx2' | 'sse41' (also ZEN_TTS_KERNEL). */
@@ -98,31 +104,55 @@ function loadNative(n: NodeApis, o: NodeLoadOptions): { addon: NativeKernels; ke
   return { error: `no native build usable (${tried.join('; ')}); build with \`pnpm run build:native\`` };
 }
 
+/** A .ztm from an http(s) URL (the CDN of the release, or your own server). */
+async function download(url: string): Promise<ArrayBuffer> {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`zen-tts/node: ${url}: ${r.status}`);
+  return r.arrayBuffer();
+}
+
 const buf = (b: Uint8Array): ArrayBuffer => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
 
 export class ZenTtsNode {
-  private constructor(private readonly tts: CpuOwnTts, readonly kernel: TtsKernel, readonly voice: VoiceId) {}
+  private constructor(private readonly tts: CpuOwnTts, readonly kernel: TtsKernel, readonly voice: string, readonly header?: ZtmHeader) {}
 
   static async load(o: NodeLoadOptions = {}): Promise<ZenTtsNode> {
     const n = await nodeApis();
     const models = n.path.resolve(o.modelsPath ?? 'models');
-    const dirs = voiceDirs(o.voice);
-    const read = (p: string): Uint8Array => {
-      const f = n.path.join(models, p);
-      if (!n.fs.existsSync(f)) throw new Error(`zen-tts/node: ${f} is missing (modelsPath: the directory with ${dirs.tts}/ and ${dirs.decoder}/)`);
-      return n.fs.readFileSync(f);
+    const read = (p: string, what: string): Uint8Array => {
+      if (!n.fs.existsSync(p)) throw new Error(`zen-tts/node: ${p} is missing (${what})`);
+      return n.fs.readFileSync(p);
     };
-    const meta = JSON.parse(new TextDecoder().decode(read(`${dirs.tts}/own.json`))) as OwnMeta;
-    const nsfMeta = JSON.parse(new TextDecoder().decode(read(`${dirs.decoder}/nsf.json`))) as NsfExportMeta;
+    let meta: OwnMeta, bin: ArrayBuffer, nsfMeta: NsfExportMeta, nsfBin: ArrayBuffer, voice: string, header: ZtmHeader | undefined;
+    if (o.model !== undefined) {
+      const z = parseZtm(/^https?:\/\//.test(o.model) ? await download(o.model) : buf(read(n.path.resolve(o.model), 'model: a .ztm file')));
+      // the G2P: <modelsPath>/g2p, or the package's own models/g2p when modelsPath is not given
+      const g2pDir = o.modelsPath !== undefined ? n.path.join(models, 'g2p') : n.path.join(packageRoot(n), 'models', 'g2p');
+      const g2pWhat = 'the G2P: g2p/g2p.json and g2p/g2p.bin (the package\'s models/g2p, or under modelsPath)';
+      const g2p = JSON.parse(new TextDecoder().decode(read(n.path.join(g2pDir, 'g2p.json'), g2pWhat))) as G2pMeta;
+      const warn = g2pMismatch(z, g2p);
+      if (warn) console.warn(warn);
+      ({ meta, bin } = ownFromZtm(z, g2p, buf(read(n.path.join(g2pDir, 'g2p.bin'), g2pWhat))));
+      ({ meta: nsfMeta, bin: nsfBin } = vocoderFromZtm(z));
+      voice = z.header.voice.id; header = z.header;
+    } else {
+      const dirs = voiceDirs(o.voice);
+      const what = `modelsPath: the directory with ${dirs.tts}/ and ${dirs.decoder}/`;
+      meta = JSON.parse(new TextDecoder().decode(read(n.path.join(models, dirs.tts, 'own.json'), what))) as OwnMeta;
+      nsfMeta = JSON.parse(new TextDecoder().decode(read(n.path.join(models, dirs.decoder, 'nsf.json'), what))) as NsfExportMeta;
+      bin = buf(read(n.path.join(models, dirs.tts, 'own.bin'), what));
+      nsfBin = buf(read(n.path.join(models, dirs.decoder, 'nsf.bin'), what));
+      voice = o.voice ?? 'marine';
+    }
     const wasm = n.fs.readFileSync(n.path.join(packageRoot(n), 'cpu', 'tts-cpu.wasm'));
-    const tts = await CpuOwnTts.create(wasm, meta, buf(read(`${dirs.tts}/own.bin`)), nsfExportToWeights(nsfMeta, buf(read(`${dirs.decoder}/nsf.bin`))), nsfF0Norm(nsfMeta), nsfOutputGain(nsfMeta));
+    const tts = await CpuOwnTts.create(wasm, meta, bin, nsfExportToWeights(nsfMeta, nsfBin), nsfF0Norm(nsfMeta), nsfOutputGain(nsfMeta));
     const want = o.backend ?? 'auto';
     let kernel: TtsKernel = 'wasm';
     if (want !== 'wasm') {
       const r = loadNative(n, o);
       if ('addon' in r) { tts.k.useNative(r.addon); kernel = r.kernel; } else if (want === 'native') throw new Error(`zen-tts/node: ${r.error}`);
     }
-    return new ZenTtsNode(tts, kernel, o.voice ?? 'marine');
+    return new ZenTtsNode(tts, kernel, voice, header);
   }
 
   /** One sentence (up to about 11 s of speech) to 44.1 kHz mono audio. Synchronous work on this thread. */

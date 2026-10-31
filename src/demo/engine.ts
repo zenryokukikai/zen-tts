@@ -1,6 +1,6 @@
 // The demo's TTS (shared by 「話す」 and the intonation panel), the sentence split, and the dictionary kept in this
-// browser only (localStorage). Nothing is sent anywhere: the model files are the only downloads.
-import { ZenTts, type Backend, type DictEntry, type EngineSpeakOptions, type SpeakResult, type VoiceId } from '../index.js';
+// browser only (localStorage). Nothing is sent anywhere: the model files (the voice's .ztm from the CDN, the G2P) are the only downloads.
+import { ZenTts, ztmUrl, type Backend, type DictEntry, type EngineSpeakOptions, type SpeakResult, type VoiceId } from '../index.js';
 import { BROWSER_DICT_STORAGE_KEY, BrowserDictError, dictFile, parseDictFile } from './dictionary.js';
 
 /** iOS Safari (16.4+): the page's voice as media playback. Left at 'auto', a page that only uses Web Audio plays in the
@@ -24,8 +24,10 @@ export function pageVoiceId(): VoiceId {
 /** The TTS on the chosen backend with the page's voice (loaded once per backend and voice; a failed load is tried again
  *  on the next call). */
 export function loadEngine(backend: Backend): Promise<ZenTts> {
+  // ?model=<url of a .ztm>: that voice instead of the 声 radio's (docs/ztm-format.md)
+  const model = new URLSearchParams(location.search).get('model') ?? undefined;
   const voice = pageVoiceId();
-  const key = `${backend}/${voice}`;
+  const key = `${backend}/${model ?? voice}`;
   if (engine && engineKey !== key) {
     const old = engine;
     engine = undefined;
@@ -33,7 +35,8 @@ export function loadEngine(backend: Backend): Promise<ZenTts> {
     void queue.then(() => old).then((t) => t.destroy(), () => undefined);
   }
   engineKey = key;
-  engine ??= ZenTts.load({ modelsUrl: '../models', cpuWasmUrl: '../cpu/tts-cpu.wasm', backend, voice }).then((t) => { loaded = t; return t; });
+  // the voice's .ztm from the release's CDN (ztmUrl), unless ?model= names another; the G2P from ../models/g2p
+  engine ??= ZenTts.load({ modelsUrl: '../models', cpuWasmUrl: '../cpu/tts-cpu.wasm', backend, model: model ?? ztmUrl(voice) }).then((t) => { loaded = t; return t; });
   engine.catch(() => { engine = undefined; });
   return engine;
 }

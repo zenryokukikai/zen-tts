@@ -2,7 +2,7 @@
 
 日本語のニューラル音声合成（TTS）。5 つの感情スタイルを連続値で混合し、文中で時間的に遷移させられます。G2P からデコーダまでブラウザ内（WebGPU / WASM SIMD）と Node.js（CPU）で動作します。
 
-バージョン 1.0.0。4 voices（voice ごとに独立したモデル。G2P は共通）。
+バージョン 1.1.0。4 voices（voice ごとに独立したモデル。G2P は共通）。voice のモデルは 1 ファイル（`.ztm`）で CDN から配布します（「モデルファイル」）。
 
 | voice | id | model | 特徴 |
 |---|---|---|---|
@@ -21,13 +21,13 @@
 - **オンデバイス**：G2P、韻律予測、生成器、NSF デコーダ（44.1 kHz）まで、すべてクライアント側で実行。ブラウザは WebGPU、非対応時は WASM SIMD（Web Worker）。
 - **速度**：Intel Xeon 1 スレッドで RTF 0.042（「ほかの TTS との比較」）。ブラウザの CPU で RTF 約 0.09（Apple M3 Max）、iPhone で約 0.11。
 - **辞書**：語ごとに読み・アクセント型・拍ごとの相対ピッチ（`contour`）・長さ・句境界を登録。相対値なので、感情や文中位置によらず登録した形状で読みます。
-- **サイズ**：1 voice あたり約 31 MB（int8 / fp16）、CPU カーネル（`cpu/tts-cpu.wasm`）57 KB。
+- **サイズ**：1 voice あたり 26.1 MB（`.ztm`、int8 / fp16）＋共通の G2P 4.99 MB、CPU カーネル（`cpu/tts-cpu.wasm`）57 KB。
 
 ## 関連リポジトリ
 
 | リポジトリ | 中身 |
 |---|---|
-| [zenryokukikai/zen-tts](https://github.com/zenryokukikai/zen-tts)（このリポジトリ） | ZEN-TTS：4 voices の重み、ブラウザ / Node ランタイム、デモ |
+| [zenryokukikai/zen-tts](https://github.com/zenryokukikai/zen-tts)（このリポジトリ） | ZEN-TTS：ブラウザ / Node ランタイム、G2P、デモ（voice の重みは CDN） |
 | [zenryokukikai/zen-lipsync](https://github.com/zenryokukikai/zen-lipsync) | ZEN-LipSync の SDK（`@zenryokukikai/zen-lipsync`） |
 | [zenryokukikai/zen-lipsync-avatars](https://github.com/zenryokukikai/zen-lipsync-avatars) | アバターパックと examples |
 
@@ -37,16 +37,16 @@ npm レジストリには公開していません。GitHub から指定します
 
 ```sh
 # npm
-npm i github:zenryokukikai/zen-tts#v1.0.0
+npm i github:zenryokukikai/zen-tts#v1.1.0
 # pnpm
-pnpm add github:zenryokukikai/zen-tts#v1.0.0
+pnpm add github:zenryokukikai/zen-tts#v1.1.0
 # yarn
-yarn add github:zenryokukikai/zen-tts#v1.0.0
+yarn add github:zenryokukikai/zen-tts#v1.1.0
 ```
 
 - Node.js 26.12.1（`.mise.toml` で固定、`mise install`）。開発は pnpm。
-- `#v1.0.0` はタグまたはコミットハッシュで固定してください。
-- 重み（`models/`）は npm パッケージに含まれません。リポジトリの `models/` を配置し、`modelsUrl`（ブラウザ）／`modelsPath`（Node）で指定します。ファイル一覧と sha256 は `models/manifest.json`。
+- `#v1.1.0` はタグまたはコミットハッシュで固定してください。
+- voice の重み（`.ztm`）はリポジトリに含まれません。CDN から読み込むか、ダウンロードして自分のサーバーに置きます（「モデルファイル」）。G2P（`models/g2p/`）はリポジトリに同梱。
 
 ## デモ
 
@@ -56,7 +56,7 @@ pnpm build           # tsc -> dist/
 pnpm serve           # http://localhost:8080/demo/
 ```
 
-`demo/index.html`：
+`demo/index.html`（voice の `.ztm` は CDN から読み込みます。`?model=<.ztm の URL>` で別の voice）：
 - 合成（WAV 保存、処理時間・RTF 表示）、感情配合スライダー、`strength`
 - 文中遷移（9 種のカーブ）
 - バックエンド選択：auto / WebGPU / CPU（WASM）
@@ -72,11 +72,12 @@ E2E：`pnpm check`（`pnpm serve` 起動中に実行）。ヘッドレス Chromi
 ## 使い方（API）
 
 ```ts
-import { ZenTts, wavBlob } from './dist/index.js';
+import { ZenTts, ztmUrl, wavBlob } from './dist/index.js';
 
 // backend: 'auto'（既定：WebGPU があれば GPU、なければ CPU）、'webgpu'、'cpu'
-// voice: 'marine'（既定）| 'hashiro' | 'kai' | 'kikka'
-const tts = await ZenTts.load({ modelsUrl: './models', cpuWasmUrl: './cpu/tts-cpu.wasm', voice: 'marine' });
+// voice の .ztm を CDN から読み込む：ztmUrl('marine' | 'hashiro' | 'kai' | 'kikka')
+// G2P は modelsUrl の g2p/（リポジトリの models/g2p/ を配置）
+const tts = await ZenTts.load({ modelsUrl: './models', cpuWasmUrl: './cpu/tts-cpu.wasm', model: ztmUrl('marine') });
 console.log(tts.backend, tts.voice);   // 'webgpu' か 'cpu'、声の id
 
 // 感情は比率で指定（合計は気にしなくてよい）
@@ -98,7 +99,7 @@ await tts.speak('落ち着いて聞いてください。もう我慢できませ
 - `speakStream(text, options)`：`AsyncIterable` で 1 文ずつ返す。分割は「。！？」と改行（`splitSentences()`）。
 - `speakWith(text, { blend, labels, f0Add, durScale })`：音単位の F0 加算・長さ倍率・アクセントラベルを与えて合成（デモのイントネーション編集が使用）。
 - 感情名：`neutral`、`happy`、`sad`、`angry`、`apologetic`。
-- export：`VERSION`（`'1.0.0'`）、`VOICE`（既定 `'marine'`）、`VOICES`。`tts.voice` は使用中の voice id。
+- export：`VERSION`（`'1.1.0'`）、`VOICE`（既定 `'marine'`）、`VOICES`、`ztmUrl(id)`（その voice の CDN の URL）、`ZTM_BASE_URL`。`tts.voice` は使用中の voice id。
 - `EMOTION_CURVES`：`ease`、`linear`、`fast-start`、`late-surge`、`switch`、`steps`、`hill`、`valley`、`wave`。
 
 ## Node.js で使う（サーバー、CPU）
@@ -111,10 +112,11 @@ pnpm run build:native                            # 任意：x86-64 の Linux で
 ```
 
 ```js
-import { ZenTtsNode, wavBytes } from 'zen-tts/node';
+import { ZenTtsNode, ztmUrl, wavBytes } from 'zen-tts/node';
 import { writeFileSync } from 'node:fs';
 
-const tts = await ZenTtsNode.load({ modelsPath: './models', voice: 'kikka' });   // voice を省くと 'marine'
+// model：.ztm の URL（起動時に fetch）かローカルのパス。G2P はパッケージの models/g2p/
+const tts = await ZenTtsNode.load({ model: ztmUrl('kikka') });   // 例：{ model: './kikka.ztm' }
 console.log(tts.kernel, tts.voice);   // 'avx512' | 'avx2' | 'sse41'（ネイティブ版）か 'wasm'、声の id
 
 const r = await tts.speak('本日はご来店いただき、ありがとうございます。', { emotion: { happy: 70, neutral: 30 } });
@@ -171,19 +173,25 @@ for await (const c of tts.speakStream('こんにちは。全力マリンです�
 
 ## モデルファイル
 
-重みは `models/` に同梱（4 voices、計 124.5 MB。npm パッケージには含まれない）。
+1.1.0 から、voice の重みは 1 voice 1 ファイル（`.ztm`、形式は [docs/ztm-format.md](docs/ztm-format.md)）で CDN から配布します。リポジトリには含みません。
 
-| voice | パス |
-|---|---|
-| `marine`（既定） | `models/tts/`、`models/decoder/` |
-| `hashiro` / `kai` / `kikka` | `models/voices/<id>/tts/`、`models/voices/<id>/decoder/` |
+| voice | URL | サイズ | sha256 |
+|---|---|---|---|
+| `marine` | https://tts-models.zenryoku.work/v1.1.0/marine.ztm | 26.1 MB | `3fce81efbbb598b546429c6e53955a6d18fdbc9bca72afd029baf2eac06678a0` |
+| `hashiro` | https://tts-models.zenryoku.work/v1.1.0/hashiro.ztm | 26.1 MB | `ad6557b1d5e427c3466203a6b450530b70480b4a825129c734322de39d269230` |
+| `kai` | https://tts-models.zenryoku.work/v1.1.0/kai.ztm | 26.1 MB | `653d1c14b6eff80a0d28e483422a43ad82c3b78f8ead61cb7aa1984062883e33` |
+| `kikka` | https://tts-models.zenryoku.work/v1.1.0/kikka.ztm | 26.1 MB | `1875058d12bf15815638542e8b1178af56f63ca29120b5c7f5b97d38e4cc5c17` |
+
+- `ztmUrl(id)` が上の URL を返します。CORS は全オリジン許可、`Cache-Control: immutable`（版ごとにパスを分けるため）。
+- 自分のサーバーに置く場合：上の URL からダウンロードし、`model` にその URL（ブラウザ）またはパス（Node）を指定します。
 
 | ファイル | サイズ | 内容 |
 |---|---|---|
-| `tts/own.bin`、`tts/own.json` | 10.6 MB（int8） | G2P（全 voice 共通）、韻律予測器、生成器。`own.json` は層構成・`pitchRange` など |
-| `decoder/nsf.bin`、`decoder/nsf.json` | 19.1 MB（fp16） | NSF デコーダ（44.1 kHz）。`nsf.json`：`logF0Mean` / `logF0Std`（F0 正規化）、`outputGain`（出力の線形ゲイン。省略時 1。> 1 のときピークリミッタ knee 0.8 / ceiling 0.95） |
-| `models/manifest.json` | 1 KB | voice ごとの model 版・名前・ディレクトリ、全ファイルの bytes と sha256 |
+| `<voice>.ztm` | 26.1 MB | 韻律予測器・生成器（int8）と NSF デコーダ（fp16、44.1 kHz）。voice ごと |
+| `models/g2p/g2p.bin`、`g2p.json` | 4.99 MB | G2P（全 voice 共通）。リポジトリと npm パッケージに同梱。ブラウザでは `modelsUrl` の `g2p/` に配置 |
 | `cpu/tts-cpu.wasm` | 57 KB | CPU カーネル（WASM SIMD128）。ソースは `native/tts-cpu.c`、`pnpm build:wasm` で再生成（clang + wasm-ld、`WASM_LLVM_BIN`） |
+
+1.0.0 の 4 ファイル構成（`tts/`・`decoder/`・`voices/<id>/`）も、`voice` オプションでそのまま読み込めます。そのファイルは v1.0.0 タグの `models/` にあります（https://github.com/zenryokukikai/zen-tts/tree/v1.0.0/models ）。
 
 ### ネイティブカーネル（x86-64、Node.js）
 

@@ -27,7 +27,8 @@ page.on('pageerror', (e) => result.errors.push(String(e)));
 page.on('console', (m) => { if (m.type() === 'error') result.errors.push(`console: ${m.text()}`); });
 page.on('request', (r) => {
   const u = new URL(r.url());
-  if (r.method() !== 'GET' || u.origin !== new URL(base).origin || !/^\/(demo|dist|models|cpu)\//.test(u.pathname)) result.requests.push(`${r.method()} ${r.url()}`);
+  const cdn = u.origin === 'https://tts-models.zenryoku.work' && /^\/v[\d.]+\/\w+\.ztm$/.test(u.pathname);   // the voice's .ztm (ztmUrl)
+  if (r.method() !== 'GET' || (!cdn && (u.origin !== new URL(base).origin || !/^\/(demo|dist|models|cpu)\//.test(u.pathname)))) result.requests.push(`${r.method()} ${r.url()}`);
 });
 page.on('dialog', (d) => void d.accept());
 await page.goto(`${base}/demo/`);

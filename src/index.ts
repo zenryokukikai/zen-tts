@@ -12,6 +12,9 @@ import { emotionNames, neutralBlend, type EmotionBlend, type EmotionName } from 
 import { engineOptionsOf, splitSentences, type SpeakOptions } from './runtime/speak-options.js';
 import type { OwnDictEntry, OwnDictSettings, OwnMeta } from './runtime/tts-own-prosody.js';
 import { withBuiltinDict } from './runtime/builtin-dict.js';
+import { modelFetch } from './runtime/model-fetch.js';
+import { nsfExportToWeights } from './runtime/nsf-weights.js';
+import { g2pMismatch, ownFromZtm, parseZtm, vocoderFromZtm, type G2pMeta, type ZtmHeader } from './runtime/ztm.js';
 
 export { emotionNames, neutralBlend, type EmotionBlend, type EmotionName };
 export { TTS_DEMO_CURVES as EMOTION_CURVES, TTS_DEMO_CURVE_LABEL as EMOTION_CURVE_LABEL, type TtsDemoCurve as EmotionCurve } from './runtime/emotion-curve.js';
@@ -22,7 +25,8 @@ export { DEFAULT_OWN_DICT_SETTINGS as DEFAULT_DICT_SETTINGS, pitchRangeOf } from
 export const MODEL_SET = 'tts';
 export const DECODER_SET = 'decoder';
 export const SAMPLE_RATE = 44100;
-export { VERSION, VOICE, VOICES, voiceDirs, type VoiceId } from './version.js';
+export { VERSION, VOICE, VOICES, ZTM_BASE_URL, voiceDirs, ztmUrl, type VoiceId } from './version.js';
+export { parseZtm, type ZtmHeader } from './runtime/ztm.js';
 import { voiceDirs, type VoiceId } from './version.js';
 
 export { emotionBlend, splitSentences, type EmotionAmounts, type SpeakOptions } from './runtime/speak-options.js';
@@ -31,11 +35,14 @@ export { emotionBlend, splitSentences, type EmotionAmounts, type SpeakOptions } 
 export type Backend = 'auto' | 'webgpu' | 'cpu';
 
 export interface LoadOptions {
-  /** URL of the directory that holds tts/ and decoder/ (default './models'). */
+  /** URL of the directory that holds g2p/ (with model), or tts/ and decoder/ (with voice, the 1.0.0 layout). Default './models'. */
   modelsUrl?: string;
   /** The voice (default 'marine'): 'marine' loads tts/ and decoder/, another id voices/<id>/tts/ and voices/<id>/decoder/
    *  under modelsUrl (voiceDirs). The text frontend and G2P are the same for every voice. */
   voice?: VoiceId;
+  /** URL of a voice packed in one file (.ztm, docs/ztm-format.md), e.g. ztmUrl('kikka') on the release's CDN. The G2P is
+   *  read from <modelsUrl>/g2p/. Overrides voice. */
+  model?: string;
   /** default 'auto' */
   backend?: Backend;
   /** URL of tts-cpu.wasm for the CPU backend (default './cpu/tts-cpu.wasm'). */
@@ -61,9 +68,10 @@ async function webgpuDevice(): Promise<unknown | undefined> {
 }
 
 export class ZenTts {
-  private constructor(readonly engine: Engine, readonly backend: 'webgpu' | 'cpu', readonly voice: VoiceId) {}
+  private constructor(readonly engine: Engine, readonly backend: 'webgpu' | 'cpu', readonly voice: string, readonly header?: ZtmHeader) {}
 
   static async load(o: LoadOptions = {}): Promise<ZenTts> {
+    if (o.model !== undefined) return ZenTts.loadZtm(o.model, o);
     const want = o.backend ?? 'auto';
     const modelsUrl = o.modelsUrl ?? './models';
     const dirs = voiceDirs(o.voice);
@@ -73,6 +81,33 @@ export class ZenTts {
       if (want === 'webgpu') throw new Error('WebGPU is not available in this browser');
     }
     return new ZenTts(await CpuTts.load(o.cpuWasmUrl ?? './cpu/tts-cpu.wasm', modelsUrl, dirs.tts, dirs.decoder), 'cpu', o.voice ?? 'marine');
+  }
+
+  /** A .ztm voice: one fetch of the file, plus the runtime's G2P under modelsUrl. */
+  private static async loadZtm(url: string, o: LoadOptions): Promise<ZenTts> {
+    const base = (o.modelsUrl ?? './models').replace(/\/$/, '');
+    const got = async (p: string): Promise<Response> => { const r = await modelFetch(p); if (!r.ok) throw new Error(`zen-tts: ${p}: ${r.status}`); return r; };
+    const [file, g2p, g2pBin] = await Promise.all([
+      got(url).then((r) => r.arrayBuffer()),
+      got(`${base}/g2p/g2p.json`).then((r) => r.json() as Promise<G2pMeta>),
+      got(`${base}/g2p/g2p.bin`).then((r) => r.arrayBuffer()),
+    ]);
+    const z = parseZtm(file);
+    const warn = g2pMismatch(z, g2p);
+    if (warn) console.warn(warn);
+    const own = ownFromZtm(z, g2p, g2pBin);
+    const voc = vocoderFromZtm(z);
+    const want = o.backend ?? 'auto';
+    if (want !== 'cpu') {
+      const device = o.device ?? await webgpuDevice();
+      if (device) return new ZenTts(await WgslOwnTts.fromData(device, own.meta, own.bin, { weights: nsfExportToWeights(voc.meta, voc.bin), meta: voc.meta }), 'webgpu', z.header.voice.id, z.header);
+      if (want === 'webgpu') throw new Error('WebGPU is not available in this browser');
+    }
+    const wasm = await (await got(o.cpuWasmUrl ?? './cpu/tts-cpu.wasm')).arrayBuffer();
+    // the worker gets its own copies of the vocoder bytes only (the file buffer is not transferred)
+    const s = z.header.sections.vocoder;
+    const vocMeta = { ...z.header.vocoder.meta, tensors: z.header.vocoder.tensors };
+    return new ZenTts(await CpuTts.fromData(wasm, own.meta, own.bin, vocMeta, file.slice(s.offset, s.offset + s.bytes)), 'cpu', z.header.voice.id, z.header);
   }
 
   /** The model's tables (kana, punctuation, ...) for showing the readings. */

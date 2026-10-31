@@ -7,6 +7,7 @@ import { modelFetch } from './model-fetch.js';
 import { DW_NORM, IM2COL, ROWS, STORAGE, UNIFORM, COPY_DST, COPY_SRC, MAP_READ, WG, linear, uniformData } from './tts-wgsl.js';
 import { VITS_ATTN } from './vits-attn.js';
 import { NSF, WgslNsfDecoder, loadNsfWeights, nsfF0Norm, nsfOutputGain, type NsfPcmChunk } from './nsf-wgsl.js';
+import type { NsfExportMeta, NsfWeights } from './nsf-weights.js';
 import { emotionNames, type EmotionBlend } from './emotion.js';
 import { normalizeOwnText } from './ja-text-normalize.js';
 import {
@@ -134,7 +135,12 @@ export class WgslOwnTts {
     const base = modelsUrl.replace(/\/$/, '');
     const [mr, br, dec] = await Promise.all([modelFetch(`${base}/${set}/own.json`), modelFetch(`${base}/${set}/own.bin`), loadNsfWeights(`${base}/${decoderSet}/nsf`)]);
     if (!mr.ok || !br.ok) throw new Error(`tts weights ${set}: ${mr.status} / ${br.status}`);
-    const m = new WgslOwnTts(device, (await mr.json()) as OwnMeta, await br.arrayBuffer());
+    return WgslOwnTts.fromData(device, (await mr.json()) as OwnMeta, await br.arrayBuffer(), dec, streaming);
+  }
+
+  /** The same from weights already in memory (own.json / own.bin as one, the decoder's converted weights and its nsf.json). */
+  static async fromData(device: GpuDevice, meta: OwnMeta, bin: ArrayBuffer, dec: { weights: NsfWeights; meta: NsfExportMeta }, streaming = false): Promise<WgslOwnTts> {
+    const m = new WgslOwnTts(device, meta, bin);
     const codes = { lin8: linear('int8'), lin16: linear('fp16'), im2col: IM2COL, dwNorm: DW_NORM, vattn: VITS_ATTN, frameIn: FRAME_IN };
     for (const [name, code] of Object.entries(codes)) {
       m.pipelines[name] = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: device.createShaderModule({ code }), entryPoint: 'main' } });

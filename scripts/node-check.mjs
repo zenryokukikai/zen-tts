@@ -1,4 +1,4 @@
-// zen-tts/node check (needs models/ and, for native, `pnpm run build:native`):
+// zen-tts/node check (fetches marine.ztm from the release's CDN, or ZTM_FILE=<local .ztm>; for native, `pnpm run build:native`):
 //  1. parity: the browser's CPU path (CpuOwnTts on cpu/tts-cpu.wasm with the worker's curve sampling) vs zen-tts/node
 //     with every kernel build that loads here, on the test sentences (scripts/sentences.json) + an emotion curve + a dictionary entry;
 //  2. RTF on 1 thread (synthesis time / audio length), per kernel, median over the sentences after a warm-up;
@@ -11,7 +11,8 @@ import { CpuOwnTts } from '../dist/runtime/cpu-tts.js';
 import { nsfExportToWeights } from '../dist/runtime/nsf-weights.js';
 import { withBuiltinDict } from '../dist/runtime/builtin-dict.js';
 import { curveFn, curvePoints, engineOptionsOf } from '../dist/runtime/speak-options.js';
-import { ZenTtsNode } from '../dist/node/index.js';
+import { ZenTtsNode, ztmUrl, parseZtm } from '../dist/node/index.js';
+import { ownFromZtm, vocoderFromZtm } from '../dist/runtime/ztm.js';
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const out = process.argv[2] ?? '/tmp/zen-tts-node-check.json';
@@ -29,7 +30,12 @@ const cases = [
 const sha = (a) => crypto.createHash('sha256').update(Buffer.from(a.buffer, a.byteOffset, a.byteLength)).digest('hex').slice(0, 16);
 
 // 1a. the browser CPU path (cpu-worker.ts: CpuOwnTts.speak with the curve as 129 points, the built-in dictionary)
-const ref = await CpuOwnTts.create(buf('cpu/tts-cpu.wasm'), json('models/tts/own.json'), buf('models/tts/own.bin'), nsfExportToWeights(json('models/decoder/nsf.json'), buf('models/decoder/nsf.bin')));
+const model = process.env.ZTM_FILE ?? ztmUrl('marine');
+const file = process.env.ZTM_FILE ? buf(path.relative(root, path.resolve(model))) : await (await fetch(model)).arrayBuffer();
+const z = parseZtm(file);
+const own = ownFromZtm(z, json('models/g2p/g2p.json'), buf('models/g2p/g2p.bin'));
+const voc = vocoderFromZtm(z);
+const ref = await CpuOwnTts.create(buf('cpu/tts-cpu.wasm'), own.meta, own.bin, nsfExportToWeights(voc.meta, voc.bin));
 const browserCpu = (text, o) => {
   const { blendAt, ...rest } = engineOptionsOf(o);
   const opts = blendAt ? { ...rest, blendAt: curveFn(curvePoints(blendAt)) } : rest;
@@ -40,7 +46,7 @@ const refAudio = cases.map((c) => browserCpu(c.text, c.o));
 const result = { node: process.version, cpu: (fs.readFileSync('/proc/cpuinfo', 'utf8').match(/model name\s*:\s*(.*)/) ?? [])[1], kernels: {} };
 for (const kernel of ['avx512', 'avx2', 'sse41', 'wasm']) {
   let tts;
-  try { tts = await ZenTtsNode.load({ modelsPath: path.join(root, 'models'), ...(kernel === 'wasm' ? { backend: 'wasm' } : { backend: 'native', kernel }) }); }
+  try { tts = await ZenTtsNode.load({ model, ...(kernel === 'wasm' ? { backend: 'wasm' } : { backend: 'native', kernel }) }); }
   catch (e) { result.kernels[kernel] = { error: String(e.message ?? e) }; console.log(kernel, 'skip:', e.message); continue; }
   // parity
   let same = 0, maxAbs = 0;

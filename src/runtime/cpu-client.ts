@@ -48,6 +48,11 @@ export class CpuTts {
       got(modelFetch(`${base}/${decoderSet}/nsf.json`), 'nsf.json').then((r) => r.json() as Promise<unknown>),
       got(modelFetch(`${base}/${decoderSet}/nsf.bin`), 'nsf.bin').then((r) => r.arrayBuffer()),
     ]);
+    return CpuTts.fromData(wasm, meta, bin, nsfMeta, nsfBin);
+  }
+
+  /** The same from files already in memory (tts-cpu.wasm, own.json / own.bin, nsf.json / nsf.bin); the buffers are transferred. */
+  static async fromData(wasm: ArrayBuffer, meta: OwnMeta, bin: ArrayBuffer, nsfMeta: unknown, nsfBin: ArrayBuffer): Promise<CpuTts> {
     const c = new CpuTts(new Worker(new URL('./cpu-worker.js', import.meta.url), { type: 'module' }), meta);
     try {
       await c.ask({ type: 'load', id: ++c.seq, wasm, meta, bin, nsfMeta, nsfBin }, [wasm, bin, nsfBin]);
