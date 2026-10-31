@@ -6,10 +6,10 @@ Copyright (c) 2026 Zenryoku Kikai Inc. (全力機械株式会社) — https://ze
 
 ### 1. 対象
 
-このライセンスは、このリポジトリに含まれる次のもの（以下「本ソフトウェア」）に適用されます。
-- ソースコード
-- モデルの重み（`models/`）
-- 文書
+このライセンスは、次のもの（以下「本ソフトウェア」）に適用されます。
+- このリポジトリのソースコード
+- モデルの重み：このリポジトリの G2P（`models/g2p/`）と、全力機械が ZEN-TTS 用に配布する voice のモデルファイル（`.ztm`。https://tts-models.zenryoku.work/ など）
+- このリポジトリの文書
 
 THIRD_PARTY_NOTICES.md に挙げた第三者の部分は、それぞれのライセンスに従います。
 
@@ -62,7 +62,7 @@ THIRD_PARTY_NOTICES.md に挙げた第三者の部分は、それぞれのライ
 ## English (translation; the Japanese text prevails)
 
 ### 1. Scope
-This license covers the source code, the model weights (`models/`) and the documents in this repository (the "Software"). Third-party parts listed in THIRD_PARTY_NOTICES.md are under their own licenses.
+This license covers the source code and the documents in this repository, and the model weights: the G2P in this repository (`models/g2p/`) and the voice model files (`.ztm`) that Zenryoku Kikai distributes for ZEN-TTS (for example at https://tts-models.zenryoku.work/) (the "Software"). Third-party parts listed in THIRD_PARTY_NOTICES.md are under their own licenses.
 
 ### 2. Grant
 Anyone may, free of charge and for commercial or non-commercial purposes:
