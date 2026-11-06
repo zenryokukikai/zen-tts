@@ -2,11 +2,11 @@
 
 日本語のニューラル音声合成（TTS）。5 つの感情スタイルを連続値で混合し、文中で時間的に遷移させられます。G2P からデコーダまでブラウザ内（WebGPU / WASM SIMD）と Node.js（CPU）で動作します。
 
-バージョン 1.2.1。4 voices（voice ごとに独立したモデル。G2P は共通）。voice のモデルは 1 ファイル（`.ztm`）で CDN から配布します（「モデルファイル」）。
+バージョン 1.2.2。4 voices（voice ごとに独立したモデル。G2P は共通）。voice のモデルは 1 ファイル（`.ztm`）で CDN から配布します（「モデルファイル」）。
 
 | voice | id | model | 特徴 |
 |---|---|---|---|
-| 全力 マリン（ぜんりょく まりん） | `marine` | marine-1.1 | やわらかく落ち着いた女性の声 |
+| 全力 マリン（ぜんりょく まりん） | `marine` | marine-1.2 | やわらかく落ち着いた女性の声 |
 | 全力 ハシロウ（ぜんりょく はしろう） | `hashiro` | hashiro-1.1 | 落ち着いた、深みのある男性の声 |
 | 全力 カイ（ぜんりょく かい） | `kai` | kai-1.1 | 40代の男性。響きのある低音 |
 | 全力 キッカ（ぜんりょく きっか） | `kikka` | kikka-1.1 | 素朴で透明感のある若い女性の声 |
@@ -38,15 +38,15 @@ npm レジストリには公開していません。GitHub から指定します
 
 ```sh
 # npm
-npm i github:zenryokukikai/zen-tts#v1.2.1
+npm i github:zenryokukikai/zen-tts#v1.2.2
 # pnpm
-pnpm add github:zenryokukikai/zen-tts#v1.2.1
+pnpm add github:zenryokukikai/zen-tts#v1.2.2
 # yarn
-yarn add github:zenryokukikai/zen-tts#v1.2.1
+yarn add github:zenryokukikai/zen-tts#v1.2.2
 ```
 
 - Node.js 26.12.1（`.mise.toml` で固定、`mise install`）。開発は pnpm。
-- `#v1.2.1` はタグまたはコミットハッシュで固定してください。
+- `#v1.2.2` はタグまたはコミットハッシュで固定してください。
 - voice の重み（`.ztm`）はリポジトリに含まれません。CDN から読み込むか、ダウンロードして自分のサーバーに置きます（「モデルファイル」）。G2P（`models/g2p/`）はリポジトリに同梱。
 
 ## デモ
@@ -103,7 +103,7 @@ await tts.speak('落ち着いて聞いてください。もう我慢できませ
 - `speed`・`pitch`：下の「速さと高さ」を参照。`speakStream` でも同じ。
 - `speakWith(text, { blend, labels, f0Add, durScale, speed, pitch })`：音単位の F0 加算・長さ倍率・アクセントラベル、文全体の速さ・高さを与えて合成（デモのイントネーション編集が使用）。
 - 感情名：`neutral`、`happy`、`sad`、`angry`、`apologetic`。
-- export：`VERSION`（`'1.2.1'`）、`VOICE`（既定 `'marine'`）、`VOICES`、`ztmUrl(id)`（その voice の CDN の URL）、`ZTM_BASE_URL`、`SPEED_MIN`・`SPEED_MAX`・`PITCH_MIN`・`PITCH_MAX`（速さと高さの範囲）。`tts.voice` は使用中の voice id。
+- export：`VERSION`（`'1.2.2'`）、`VOICE`（既定 `'marine'`）、`VOICES`、`ztmUrl(id)`（その voice の CDN の URL）、`ZTM_BASE_URL`、`SPEED_MIN`・`SPEED_MAX`・`PITCH_MIN`・`PITCH_MAX`（速さと高さの範囲）。`tts.voice` は使用中の voice id。
 - `EMOTION_CURVES`：`ease`、`linear`、`fast-start`、`late-surge`、`switch`、`steps`、`hill`、`valley`、`wave`。
 
 ## 速さと高さ
@@ -227,14 +227,14 @@ for await (const c of tts.speakStream('こんにちは。全力マリンです�
 
 ## モデルファイル
 
-voice の重みは 1 voice 1 ファイル（`.ztm`、形式は [docs/ztm-format.md](docs/ztm-format.md)）で CDN から配布します。リポジトリには含みません。1.2.1 は 1.2.0 と同じ `.ztm` を使います。
+voice の重みは 1 voice 1 ファイル（`.ztm`、形式は [docs/ztm-format.md](docs/ztm-format.md)）で CDN から配布します。リポジトリには含みません。1.2.2 では marine を更新しました。ほかの 3 voices は 1.2.0 と同じファイルです。
 
 | voice | URL | サイズ | sha256 |
 |---|---|---|---|
-| `marine` | https://tts-models.zenryoku.work/v1.2.0/marine.ztm | 27.7 MB | `c5f5ff04d43c3a742790856f4639f6d801e5c9a951a4f11ae800775fa0ed11d5` |
-| `hashiro` | https://tts-models.zenryoku.work/v1.2.0/hashiro.ztm | 27.7 MB | `6b85821342690767c0156a3f2c390f05589ae91291c24cca545880f8d2c5b348` |
-| `kai` | https://tts-models.zenryoku.work/v1.2.0/kai.ztm | 27.7 MB | `c6f741f7269736de3abb063215f1f9a032aa5fc06a4e576f38accb407b04fdc4` |
-| `kikka` | https://tts-models.zenryoku.work/v1.2.0/kikka.ztm | 27.7 MB | `277cbd80a4fbff93988ff3b382fc29c8de98749a2c1cb1a8d6e0cc9e2fc869c8` |
+| `marine` | https://tts-models.zenryoku.work/v1.2.2/marine.ztm | 27.7 MB | `a6c4f7fe47d485c409b5aaa685b0b92fd86ae4524efbe9de43e9d430c0c40a13` |
+| `hashiro` | https://tts-models.zenryoku.work/v1.2.2/hashiro.ztm | 27.7 MB | `6b85821342690767c0156a3f2c390f05589ae91291c24cca545880f8d2c5b348` |
+| `kai` | https://tts-models.zenryoku.work/v1.2.2/kai.ztm | 27.7 MB | `c6f741f7269736de3abb063215f1f9a032aa5fc06a4e576f38accb407b04fdc4` |
+| `kikka` | https://tts-models.zenryoku.work/v1.2.2/kikka.ztm | 27.7 MB | `277cbd80a4fbff93988ff3b382fc29c8de98749a2c1cb1a8d6e0cc9e2fc869c8` |
 
 - `ztmUrl(id)` が上の URL を返します。CORS は全オリジン許可、`Cache-Control: immutable`（版ごとにパスを分けるため）。
 - 自分のサーバーに置く場合：上の URL からダウンロードし、`model` にその URL（ブラウザ）またはパス（Node）を指定します。

@@ -1,6 +1,6 @@
 {
   "name": "zen-tts",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "private": true,
   "description": "ZEN-TTS: Japanese text-to-speech whose style (emotion) can be controlled as a gradation: in the browser (WebGPU or CPU via WebAssembly) and on Node.js (CPU)",
   "license": "SEE LICENSE IN LICENSE.md",

@@ -102,19 +102,19 @@ test('parseZtm: refuses a wrong magic, a newer version, sections out of bounds, 
 });
 
 test('ztmUrl: the CDN URL of each voice of this release', () => {
-  assert.equal(ztmUrl(), 'https://tts-models.zenryoku.work/v1.2.0/marine.ztm');
-  assert.equal(ztmUrl('kikka'), 'https://tts-models.zenryoku.work/v1.2.0/kikka.ztm');
+  assert.equal(ztmUrl(), 'https://tts-models.zenryoku.work/v1.2.2/marine.ztm');
+  assert.equal(ztmUrl('kikka'), 'https://tts-models.zenryoku.work/v1.2.2/kikka.ztm');
   assert.throws(() => ztmUrl('nobody'), /unknown voice/);
 });
 
-test('pack-ztm: --model sets voice.model, and unpack -> pack keeps it (the 1.2.0 voices are <id>-1.1)', async () => {
-  for (const id of Object.keys(VOICES)) assert.match(VOICES[id].model, new RegExp(`^${id}-1\\.1$`));
+test('pack-ztm: --model sets voice.model, and unpack -> pack keeps it (1.2.2: marine-1.2, the others <id>-1.1)', async () => {
+  for (const id of Object.keys(VOICES)) assert.match(VOICES[id].model, new RegExp(`^${id}-1\\.${id === 'marine' ? 2 : 1}$`));
   const u = path.join(tmp, 'marine-model');
   pack('unpack', await marineZtm(), '-o', u, '--g2p', g2pDir);
   const a = path.join(tmp, 'marine-model.ztm');
   pack('pack', u, '-o', a, '--model', VOICES.marine.model);
   const ab = (b) => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
-  assert.equal(parseZtm(ab(fs.readFileSync(a))).header.voice.model, 'marine-1.1');
+  assert.equal(parseZtm(ab(fs.readFileSync(a))).header.voice.model, 'marine-1.2');
   const u2 = path.join(tmp, 'marine-model-u');
   pack('unpack', a, '-o', u2, '--g2p', g2pDir);
   const b = path.join(tmp, 'marine-model-b.ztm');

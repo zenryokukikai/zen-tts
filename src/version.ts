@@ -1,7 +1,7 @@
 // ZEN-TTS release and model versions (kept in step with package.json "version").
-export const VERSION = '1.2.1';
+export const VERSION = '1.2.2';
 /** The default voice: 「全力 マリン」 (Zenryoku Marine). */
-export const VOICE = { id: 'marine', name: { ja: '全力 マリン', en: 'Zenryoku Marine' }, model: 'marine-1.1' } as const;
+export const VOICE = { id: 'marine', name: { ja: '全力 マリン', en: 'Zenryoku Marine' }, model: 'marine-1.2' } as const;
 
 /** The four voices a models directory can hold. 'marine' is in tts/ and decoder/; the others in voices/<id>/tts/ and voices/<id>/decoder/. */
 export const VOICES = {
@@ -18,8 +18,8 @@ export function voiceDirs(voice: VoiceId = 'marine'): { tts: string; decoder: st
   return voice === 'marine' ? { tts: 'tts', decoder: 'decoder' } : { tts: `voices/${voice}/tts`, decoder: `voices/${voice}/decoder` };
 }
 
-/** Where the voices of this release are published, one .ztm file per voice (docs/ztm-format.md). 1.2.1 uses the 1.2.0 voices unchanged. */
-export const ZTM_BASE_URL = 'https://tts-models.zenryoku.work/v1.2.0/';
+/** Where the voices of this release are published, one .ztm file per voice (docs/ztm-format.md). 1.2.2: marine-1.2; the other voices are the 1.2.0 files, copied unchanged. */
+export const ZTM_BASE_URL = 'https://tts-models.zenryoku.work/v1.2.2/';
 
 /** The CDN URL of a voice's .ztm (ZTM_BASE_URL + <id>.ztm). Throws on an unknown id. */
 export function ztmUrl(voice: VoiceId = 'marine'): string {
