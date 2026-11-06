@@ -14,7 +14,7 @@ import { modelFetch } from './model-fetch.js';
 //   filter: Y = H STFT(e_h) + G STFT(e_n) (hann 2048, hop 512, center reflect padding, first T frames)
 //   output: iSTFT(Y) as tts-wgsl.ts (overlap-add / sum hann^2, centre trim, length N)
 import { DW_NORM, IM2COL, ROWS, STORAGE, UNIFORM, COPY_DST, COPY_SRC, MAP_READ, WG, linear, packLinear, uniformData } from './tts-wgsl.js';
-import { DEFAULT_NSF_F0_NORM, F0Z, NSF, TRUNK, applyOutputLevel, type Net, nsfExportToWeights, nsfF0Norm, nsfOutputGain, type NsfExportMeta, type NsfF0Norm, type NsfWeights } from './nsf-weights.js';
+import { DEFAULT_NSF_F0_NORM, F0Z, NSF, TRUNK, applyOutputLevel, type Net, nsfDirectNoise, nsfExportToWeights, nsfF0Norm, nsfOutputGain, type NsfExportMeta, type NsfF0Norm, type NsfWeights } from './nsf-weights.js';
 
 export { NSF, nsfExportToWeights, nsfF0Norm, nsfOutputGain, type NsfExportMeta, type NsfF0Norm, type NsfWeights };
 
@@ -182,8 +182,10 @@ fn brev(m: u32) -> u32 { return reverseBits(m) >> ${32 - LOG2_NH}u; }`;
 /**
  * One workgroup per frame t: Y[t] = H[t] STFT(e_h)[t] + G[t] STFT(e_n)[t] (hann 2048, center reflect padding), each real
  * 2048-point FFT as a 1024-point complex FFT of z[m] = x[2m] + i x[2m + 1].
+ * direct (nsf.json noiseBranch 'direct', head 5 * 1025): no white noise, only e_h is transformed and
+ * Y[t] = H[t] STFT(e_h)[t] + min(exp(log G[t]), noiseMaxMag) (nx, ny)[t] / |(nx, ny)[t]|.
  */
-const STFT_FILTER = `
+const STFT_FILTER = (direct: boolean): string => `
 struct P { T: u32, N: u32, O: u32, maxMag: f32, offset: u32, headOffset: u32 }
 @group(0) @binding(0) var<uniform> p: P;
 @group(0) @binding(1) var<storage, read> ex: array<vec2<f32>>;
@@ -211,7 +213,7 @@ fn bin(k: u32) -> vec2<f32> {
   let t = wg.x + p.offset;
   let r = (wg.x + p.headOffset) * p.O;
   let yr = t * ${NSF.bins}u;
-  for (var c = 0u; c < 2u; c++) {
+  for (var c = 0u; c < ${direct ? 1 : 2}u; c++) {
     for (var m = li; m < NH; m += ${FFT_WG}u) { a[brev(m)] = vec2<f32>(xs(t, 2u * m, c), xs(t, 2u * m + 1u, c)); }
     workgroupBarrier();
     fft(li, -1.0);
@@ -220,7 +222,9 @@ fn bin(k: u32) -> vec2<f32> {
       if (c == 0u) {
         let m = min(exp(s[r + k]), p.maxMag);
         let ph = s[r + ${NSF.bins}u + k];
-        Y[yr + k] = cmul(m * vec2<f32>(cos(ph), sin(ph)), X);
+        Y[yr + k] = cmul(m * vec2<f32>(cos(ph), sin(ph)), X);${direct ? `
+        let nn = vec2<f32>(s[r + ${3 * NSF.bins}u + k], s[r + ${4 * NSF.bins}u + k]);
+        Y[yr + k] += min(exp(s[r + ${2 * NSF.bins}u + k]), ${NSF.noiseMaxMag.toFixed(1)}) * nn / sqrt(dot(nn, nn) + 1e-8);` : ''}
       } else {
         Y[yr + k] += min(exp(s[r + ${2 * NSF.bins}u + k]), p.maxMag) * X;
       }
@@ -359,6 +363,8 @@ export class WgslNsfDecoder {
   private steps: Step[] = [];
   private T = 0;
   private noiseMode = 1;
+  /** noiseBranch 'direct' weights (head 5 * 1025) */
+  private direct = false;
   private stream: { total: number; start: number; end: number; from: number; sampleStart: number; sampleCount: number } | null = null;
   private f0Cache!: GpuBuffer;
   private zIn!: GpuBuffer;
@@ -374,7 +380,7 @@ export class WgslNsfDecoder {
 
   static async create(device: GpuDevice, weights: NsfWeights, maxT: number, seed = 1234, f0Norm: NsfF0Norm = DEFAULT_NSF_F0_NORM, outputGain = 1): Promise<WgslNsfDecoder> {
     const m = new WgslNsfDecoder(device, maxT, seed, outputGain);
-    const codes = { linear: linear('fp16'), im2col: IM2COL, dwNorm: DW_NORM, f0Out: F0_OUT(f0Norm), trunkIn: TRUNK_IN(f0Norm), excScan: EXC_SCAN, excPrefix: EXC_PREFIX, excSource: EXC_SOURCE, stft: STFT_FILTER, istft: ISTFT, ola: OLA };
+    const codes = { linear: linear('fp16'), im2col: IM2COL, dwNorm: DW_NORM, f0Out: F0_OUT(f0Norm), trunkIn: TRUNK_IN(f0Norm), excScan: EXC_SCAN, excPrefix: EXC_PREFIX, excSource: EXC_SOURCE, stft: STFT_FILTER(nsfDirectNoise(weights)), istft: ISTFT, ola: OLA };
     for (const [name, code] of Object.entries(codes)) {
       m.pipelines[name] = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: device.createShaderModule({ code }), entryPoint: 'main' } });
     }
@@ -447,7 +453,8 @@ export class WgslNsfDecoder {
     const maxT = this.maxT;
     const N = WgslNsfDecoder.samples(maxT);
     const D = NSF.dim;
-    const O = 3 * NSF.bins;
+    this.direct = nsfDirectNoise(W);
+    const O = (this.direct ? 5 : 3) * NSF.bins;
     const O4 = Math.ceil(O / 4);
     const T = (): number => this.T;
     const n = (): number => WgslNsfDecoder.samples(this.T);
@@ -497,8 +504,9 @@ export class WgslNsfDecoder {
     this.T = T;
     if (z) this.device.queue.writeBuffer(this.zIn, 0, z.buffer, z.byteOffset, T * NSF.zDim * 4);
     if (opt.f0) this.device.queue.writeBuffer(this.f0, 0, opt.f0.buffer, opt.f0.byteOffset, T * 4);
-    this.noiseMode = opt.noise ? 0 : 1;
-    if (opt.noise) {
+    // direct: the noise channel is not read, so the shader does not draw it
+    this.noiseMode = opt.noise || this.direct ? 0 : 1;
+    if (opt.noise && !this.direct) {
       const e = new Float32Array(2 * T * NSF.hop);
       for (let i = 0; i < T * NSF.hop; i++) e[2 * i + 1] = opt.noise[i]!;
       this.device.queue.writeBuffer(this.ex, 0, e.buffer, 0, e.byteLength);

@@ -16,7 +16,7 @@ import {
   speakOptionsOf, validateDictEntry, wordEntryOf, type SoundEdits, type SoundUnit,
 } from './dictionary.js';
 import { pitchRangeOf, SAMPLE_RATE, type DictEntry as OwnDictEntry, type EngineSpeakOptions as OwnSpeakOptions, type SpeakResult as OwnSpeakResult } from '../index.js';
-import { pageBackend, pageVoice, showBackend } from './page.js';
+import { pageBackend, pageVoice, ratePitchOf, showBackend } from './page.js';
 import { browserDict, browserDictProblem, engineLoaded, loadEngine, saveBrowserDict, speakQueued, splitSentences } from './engine.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -55,9 +55,9 @@ function tuneStatus(t: string, kind: 'info' | 'error' = 'info'): void {
 }
 
 /** The speak options of the page's voice now (tts-demo.ts pageVoice) for that target. */
-function voiceOf(t: Target): { voice: ReturnType<typeof pageVoice>; o: Pick<OwnSpeakOptions, 'blend' | 'strength' | 'blendAt'> } {
+function voiceOf(t: Target): { voice: ReturnType<typeof pageVoice>; o: Pick<OwnSpeakOptions, 'blend' | 'strength' | 'blendAt' | 'speed' | 'pitch'> } {
   const voice = pageVoice(t.span[0], t.span[1]);
-  return { voice, o: { blend: voice.blend, strength: voice.strength, ...(voice.blendAt ? { blendAt: voice.blendAt } : {}) } };
+  return { voice, o: { blend: voice.blend, strength: voice.strength, ...ratePitchOf(voice), ...(voice.blendAt ? { blendAt: voice.blendAt } : {}) } };
 }
 
 // ------------------------------------------------------------ audio

@@ -21,6 +21,8 @@ import { g2pMismatch, ownFromZtm, parseZtm, vocoderFromZtm, type G2pMeta, type Z
 
 export { emotionNames, neutralBlend, type EmotionBlend, type EmotionName } from '../runtime/emotion.js';
 export { emotionBlend, splitSentences, type EmotionAmounts, type SpeakOptions } from '../runtime/speak-options.js';
+export { SPEED_MIN, SPEED_MAX, PITCH_MIN, PITCH_MAX } from '../runtime/speak-rate.js';
+import { streamMaxChars } from '../runtime/speak-rate.js';
 export { TTS_DEMO_CURVES as EMOTION_CURVES, type TtsDemoCurve as EmotionCurve } from '../runtime/emotion-curve.js';
 export type { OwnDictEntry as DictEntry, OwnDictSettings as DictSettings } from '../runtime/tts-own-prosody.js';
 export { DEFAULT_OWN_DICT_SETTINGS as DEFAULT_DICT_SETTINGS } from '../runtime/tts-own-prosody.js';
@@ -177,7 +179,7 @@ export class ZenTtsNode {
   async *speakStream(text: string, o: SpeakOptions = {}): AsyncGenerator<NodeSpeechChunk> {
     const opts = engineOptionsOf(o);
     let index = 0;
-    for (const sentence of splitSentences(text)) {
+    for (const sentence of splitSentences(text, streamMaxChars(o.speed))) {
       const r = await this.speakWith(sentence, opts);
       yield { index: index++, text: sentence, pcm: r.pcm, sampleRate: SAMPLE_RATE, timing: r.timing };
       // let other work run between sentences (synthesis itself is synchronous)

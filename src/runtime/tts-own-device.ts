@@ -10,8 +10,9 @@ import { NSF, WgslNsfDecoder, loadNsfWeights, nsfF0Norm, nsfOutputGain, type Nsf
 import type { NsfExportMeta, NsfWeights } from './nsf-weights.js';
 import { emotionNames, type EmotionBlend } from './emotion.js';
 import { normalizeOwnText } from './ja-text-normalize.js';
+import { applySpeedPitch } from './speak-rate.js';
 import {
-  applyOwnDict, dictLabels, dictProsody, frameRows, predictorInput, prosodyFromHead, slotsToPhones, templateParams, voiceDictSettings,
+  applyOwnDict, dictLabels, dropEndMark, withEndMark, dictProsody, frameRows, predictorInput, prosodyFromHead, slotsToPhones, templateParams, voiceDictSettings,
   type DictWord, type OwnDictEntry, type OwnDictSettings, type OwnMeta, type OwnProsody,
 } from './tts-own-prosody.js';
 
@@ -65,11 +66,17 @@ export interface OwnSpeakOptions {
   strength?: number;
   dict?: readonly OwnDictEntry[];
   settings?: OwnDictSettings;
+  /** romaji and short acronyms by rule, English words to the G2P in lower case (docs/SPEC-text-frontend.md §3); default true */
+  latin?: boolean;
   /** G2P labels to use instead of the G2P (e.g. high / low edited in a UI) */
   labels?: { phones: string[]; marks: number[] };
   /** per phone (no edge) semitones added / duration factor, after everything (e.g. pitch / length edited in a UI) */
   f0Add?: number[];
   durScale?: number[];
+  /** whole utterance: speaking-rate factor (1 = as predicted; durations / speed, pauses included) and semitones added
+   *  to F0 (0 = as predicted); after the dictionary and f0Add / durScale (speak-rate.ts) */
+  speed?: number;
+  pitch?: number;
   /** 文の途中で変化: the blend at a position in the utterance (0 = start, 1 = end); unset: o.blend for the whole
    * utterance. Per phone in the predictor (style row + F0 template) and per frame in the generator (z mixed between runs
    * at CURVE_ANCHORS blends along the curve). Not combined with stream. */
@@ -481,12 +488,15 @@ export class WgslOwnTts {
   }
 
   /** G2P labels of text (normalized, after dictionary L1): for showing / editing the readings and accents. */
-  async analyze(text: string, dict: readonly OwnDictEntry[] = []): Promise<{ norm: string; g2pText: string; unknown: string[]; g2p: { phones: string[]; marks: number[]; spans: [number, number][] }; phones: string[]; marks: number[]; words: DictWord[]; aligned: boolean }> {
-    const norm = normalizeOwnText(text);
-    const d = applyOwnDict(norm, dict);
-    const { ids, unknown } = this.charIds(d.text);
+  async analyze(text: string, dict: readonly OwnDictEntry[] = [], latin = true): Promise<{ norm: string; g2pText: string; unknown: string[]; g2p: { phones: string[]; marks: number[]; spans: [number, number][] }; phones: string[]; marks: number[]; words: DictWord[]; aligned: boolean }> {
+    const norm = normalizeOwnText(text, { latin });
+    const d0 = applyOwnDict(norm, dict, latin);
+    const d = d0;
+    const inp = withEndMark(d.text, this.punct);
+    const { ids, unknown } = this.charIds(inp.text);
     const { slots } = await this.g2p(ids);
-    const g = slotsToPhones(slots, this.meta, this.meta.shape.g2p.slots);
+    const g0 = slotsToPhones(slots, this.meta, this.meta.shape.g2p.slots);
+    const g = inp.added ? dropEndMark(g0) : g0;
     const L = dictLabels(g, d.matches, this.meta.kana);
     return { norm, g2pText: d.text, unknown, g2p: g, ...L };
   }
@@ -495,7 +505,7 @@ export class WgslOwnTts {
   async speak(text: string, o: OwnSpeakOptions): Promise<OwnSpeakResult> {
     const t0 = performance.now();
     const settings = voiceDictSettings(o.settings, this.meta);
-    const a = await this.analyze(text, o.dict ?? []);
+    const a = await this.analyze(text, o.dict ?? [], o.latin ?? true);
     const t1 = performance.now();
     const phones = o.labels?.phones ?? a.phones;
     const marks = o.labels?.marks ?? a.marks;
@@ -524,6 +534,7 @@ export class WgslOwnTts {
     if (words.length) ({ f0, dur } = dictProsody(base ?? pr, pr, words, this.meta, o.blend, settings));
     if (o.f0Add) f0 = f0.map((v, i) => v + (i > 0 && i <= o.f0Add!.length ? o.f0Add![i - 1]! : 0));
     if (o.durScale) dur = dur.map((v, i) => (i > 0 && i <= o.durScale!.length ? Math.max(1, Math.round(v * o.durScale![i - 1]!)) : v));
+    ({ f0, dur } = applySpeedPitch(f0, dur, o.speed, o.pitch));
     const t2 = performance.now();
     if (o.blendAt && o.stream) throw new Error('own tts: blendAt is not combined with stream');
     const s = await this.synth({ dur, f0, energy: pr.energy, voiced: pr.voiced }, o.blend, o.stream, o.blendAt);

@@ -16,6 +16,12 @@ const stopBtn = $<HTMLButtonElement>('stop');
 const dlBtn = $<HTMLButtonElement>('download');
 const strengthEl = $<HTMLInputElement>('strength');
 const strengthOut = $('strength-out');
+const speedEl = $<HTMLInputElement>('speed');
+const speedOut = $('speed-out');
+const pitchEl = $<HTMLInputElement>('pitch');
+const pitchOut = $('pitch-out');
+const showSpeed = (): void => { speedOut.textContent = `${Number(speedEl.value).toFixed(2)} 倍`; };
+const showPitch = (): void => { const p = Number(pitchEl.value); pitchOut.textContent = p === 0 ? '±0 半音' : `${p > 0 ? '+' : '−'}${Math.abs(p)} 半音`; };
 const mixEl = $('mix');
 const curveModeEl = $<HTMLInputElement>('curve-mode');
 const curveCard = $('curve-card');
@@ -56,16 +62,22 @@ function curveSettings(): { start: EmotionBlend; end: EmotionBlend; curve: TtsDe
 /** The page's voice settings now for the part a..b (0..1 by characters) of the text: the emotion mix (or, with 「文の途中で
  *  変化」, that part of the curve) and 抑揚の強さ. key changes whenever any of them changes. Used by 「話す」 and by the
  *  intonation panel (tune.ts), which listens to the 'tts-demo-voice' event on document. */
-export function pageVoice(a = 0, b = 1): { blend: EmotionBlend; strength: number; blendAt?: (x: number) => EmotionBlend; key: string } {
+export function pageVoice(a = 0, b = 1): { blend: EmotionBlend; strength: number; speed: number; pitch: number; blendAt?: (x: number) => EmotionBlend; key: string } {
   const strength = Number(strengthEl.value);
+  const speed = Number(speedEl.value);
+  const pitch = Number(pitchEl.value);
   if (!curveModeEl.checked) {
     const blend = ttsDemoBlend(percents());
-    return { blend, strength, key: JSON.stringify({ blend, strength, backend: pageBackend() }) };
+    return { blend, strength, speed, pitch, key: JSON.stringify({ blend, strength, speed, pitch, backend: pageBackend() }) };
   }
   const cs = curveSettings();
   const whole = ttsDemoCurveBlend(cs.start, cs.end, cs.curve, cs.from, cs.to);
   const blendAt = (x: number): EmotionBlend => whole(a + x * (b - a));
-  return { blend: blendAt(0.5), strength, blendAt, key: JSON.stringify({ cs, strength, a, b, backend: pageBackend() }) };
+  return { blend: blendAt(0.5), strength, speed, pitch, blendAt, key: JSON.stringify({ cs, strength, speed, pitch, a, b, backend: pageBackend() }) };
+}
+/** speed / pitch for the engine: left out at their defaults, so the default output stays bit-identical. */
+export function ratePitchOf(v: { speed: number; pitch: number }): { speed?: number; pitch?: number } {
+  return { ...(v.speed !== 1 ? { speed: v.speed } : {}), ...(v.pitch !== 0 ? { pitch: v.pitch } : {}) };
 }
 const voiceChanged = (): void => { document.dispatchEvent(new Event('tts-demo-voice')); };
 
@@ -157,11 +169,14 @@ function showMix(): void {
 }
 showMix();
 strengthEl.addEventListener('input', () => { strengthOut.textContent = `${Number(strengthEl.value).toFixed(1)} 倍`; voiceChanged(); });
+speedEl.addEventListener('input', () => { showSpeed(); voiceChanged(); });
+pitchEl.addEventListener('input', () => { showPitch(); voiceChanged(); });
 $('reset').addEventListener('click', () => {
   sliders.forEach((s, i) => { s.range.value = s.num.value = i === 0 ? '100' : '0'; });
   endSliders.forEach((s, i) => { s.range.value = s.num.value = emotionNames[i] === 'angry' ? '100' : '0'; });
   curvesEl.querySelector<HTMLInputElement>('input[value=ease]')!.checked = true; curveFromEl.value = '20'; curveToEl.value = '80';
   strengthEl.value = '1'; strengthOut.textContent = '1.0 倍';
+  speedEl.value = '1'; showSpeed(); pitchEl.value = '0'; showPitch();
   showMix();
 });
 
@@ -234,7 +249,7 @@ async function speak(): Promise<void> {
     const made = await Promise.all(r.chunks.map((c, index) => {
       const [a, b] = spans[index]!;
       const v = pageVoice(a, b);
-      return speakQueued(backend, c.speech, { blend: v.blend, strength: v.strength, ...(v.blendAt ? { blendAt: v.blendAt } : {}) });
+      return speakQueued(backend, c.speech, { blend: v.blend, strength: v.strength, ...ratePitchOf(v), ...(v.blendAt ? { blendAt: v.blendAt } : {}) });
     }));
     if (my !== run) return;
     const sr = SAMPLE_RATE;
@@ -263,7 +278,7 @@ async function speak(): Promise<void> {
     const makeMs = made.reduce((n, m) => n + m.timing.totalMs, 0);
     let sq = 0;
     for (const v of pcm) sq += (v / 32768) ** 2;
-    const result = { seq: ++resultSeq, backend: engineLoaded()?.backend ?? backend, voice: engineLoaded()?.voice, mode: cs ? 'curve' : 'whole', curve: curveLog, segments: cs ? segmentLog(made.map(() => sr), parts, spans, whole!) : undefined, text, blend, strength, chunks: made.length, browserDictEntries: browserDict().length, dictWords: made.reduce((n, m) => n + m.words.length, 0), phones: made.map((m) => m.phones.join(' ')).join(' | '), sec: +sec.toFixed(2), peak: +peak.toFixed(3), rms: +Math.sqrt(sq / Math.max(1, pcm.length)).toFixed(4), makeMs: Math.round(makeMs), rtf: +(makeMs / 1000 / sec).toFixed(3), wallMs: Math.round(performance.now() - t0), played: false };
+    const result = { seq: ++resultSeq, backend: engineLoaded()?.backend ?? backend, voice: engineLoaded()?.voice, mode: cs ? 'curve' : 'whole', curve: curveLog, segments: cs ? segmentLog(made.map(() => sr), parts, spans, whole!) : undefined, text, blend, strength, speed: Number(speedEl.value), pitch: Number(pitchEl.value), chunks: made.length, browserDictEntries: browserDict().length, dictWords: made.reduce((n, m) => n + m.words.length, 0), phones: made.map((m) => m.phones.join(' ')).join(' | '), sec: +sec.toFixed(2), peak: +peak.toFixed(3), rms: +Math.sqrt(sq / Math.max(1, pcm.length)).toFixed(4), makeMs: Math.round(makeMs), rtf: +(makeMs / 1000 / sec).toFixed(3), wallMs: Math.round(performance.now() - t0), played: false };
     (window as Window & { zenTtsDemo?: unknown }).zenTtsDemo = result;
     const buf = audioCtx.createBuffer(1, pcm.length, sr);
     buf.getChannelData(0).set(Float32Array.from(pcm, (v) => v / 32768));

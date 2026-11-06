@@ -99,6 +99,25 @@ export function slotsToPhones(slots: number[][], meta: Pick<OwnMeta, 'phoneClass
   return { phones, marks, spans };
 }
 
+
+/**
+ * The G2P was trained on sentences that end with punctuation (96% end with '.'); a text without it (「二色」, 「机」) is
+ * read badly, even into a consonant with no vowel (「二色」 -> n i e o k). The G2P therefore reads such a text with a '.'
+ * after it; the phones of that '.' are then dropped again, so the phones that follow are the same kind as before.
+ */
+export function withEndMark(text: string, punct: ReadonlySet<string>): { text: string; added: boolean } {
+  const last = text[text.length - 1];
+  if (last === undefined || punct.has(last)) return { text, added: false };
+  return { text: text + '.', added: true };
+}
+
+/** slotsToPhones' result without the last char (the '.' withEndMark added). */
+export function dropEndMark(g: { phones: string[]; marks: number[]; spans: [number, number][] }): { phones: string[]; marks: number[]; spans: [number, number][] } {
+  const spans = g.spans.slice(0, -1);
+  const end = spans.length ? spans[spans.length - 1]![1] : 0;
+  return { phones: g.phones.slice(0, end), marks: g.marks.slice(0, end), spans };
+}
+
 /** Tones (high 1 / low 0) per phone from the accent marks (non-strict). */
 export function tonesFromMarks(phones: readonly string[], marks: readonly number[], punct: ReadonlySet<string>): number[] {
   const tones = new Array<number>(phones.length).fill(0);
@@ -301,15 +320,20 @@ export function dictPhraseF0(base: Pick<OwnProsody, 'f0'>, edited: Pick<OwnProso
   return f0;
 }
 
-export interface DictMatch { entry: OwnDictEntry; /** char range in the text the G2P reads */ start: number; end: number }
+export interface DictMatch {
+  entry: OwnDictEntry;
+  /** char range in the text the G2P reads */
+  start: number;
+  end: number;
+}
 
 /**
  * L1 on normalized text: longest surface first, left to right; matched surfaces become their readings (katakana) in the
  * text the G2P reads (so it reads the word's context as usual). Returns that text and where each reading is.
  */
-export function applyOwnDict(norm: string, entries: readonly OwnDictEntry[]): { text: string; matches: DictMatch[] } {
+export function applyOwnDict(norm: string, entries: readonly OwnDictEntry[], latin = true): { text: string; matches: DictMatch[] } {
   if (!entries.length) return { text: norm, matches: [] };
-  const sorted = entries.map((e) => ({ e, s: normalizeOwnText(e.surface).replace(/[.]$/, '') })).filter((x) => x.s !== '')
+  const sorted = entries.map((e) => ({ e, s: normalizeOwnText(e.surface, { latin }).replace(/[.]$/, '') })).filter((x) => x.s !== '')
     .sort((x, y) => y.s.length - x.s.length);
   let text = '';
   const matches: DictMatch[] = [];

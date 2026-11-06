@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // .ztm packer (docs/ztm-format.md): one voice in one file, and back.
 //
-//   node scripts/pack-ztm.mjs pack <export dir> -o kikka.ztm [--id kikka] [--name-ja 全力 キッカ] [--name-en "Zenryoku Kikka"] [--created ISO]
+//   node scripts/pack-ztm.mjs pack <export dir> -o kikka.ztm [--id kikka] [--name-ja 全力 キッカ] [--name-en "Zenryoku Kikka"] [--model kikka-1.1] [--created ISO]
 //       <export dir>: tts/own.{json,bin} + decoder/nsf.{json,bin} (the export layout; models/ for marine)
 //   node scripts/pack-ztm.mjs unpack <file.ztm> -o <dir> --g2p <models>/g2p
 //       writes tts/own.{json,bin} + decoder/nsf.{json,bin} (own.bin = the given G2P + the acoustic section) and ztm.json
@@ -49,6 +49,7 @@ function pack(dir, out, opt) {
   const e = readExport(dir);
   const side = fs.existsSync(path.join(dir, 'ztm.json')) ? JSON.parse(fs.readFileSync(path.join(dir, 'ztm.json'), 'utf8')) : {};
   const id = opt.id ?? side.voice?.id ?? path.basename(path.resolve(dir));
+  const model = opt.model ?? side.voice?.model;
   const name = side.voice?.name ?? (opt['name-ja'] || opt['name-en'] ? { ...(opt['name-ja'] ? { ja: opt['name-ja'] } : {}), ...(opt['name-en'] ? { en: opt['name-en'] } : {}) } : undefined);
   const styles = side.styles ?? e.own.styles ?? (e.own.shape.styles === EMOTIONS.length ? EMOTIONS : undefined);
   if (!styles) die(`shape.styles is ${e.own.shape.styles} and own.json has no styles list: give the names`);
@@ -59,7 +60,7 @@ function pack(dir, out, opt) {
   const { tensors: nsfTensors, ...nsfMeta } = e.nsf;
   const header = {
     format: 'zen-tts-model', version: 1,
-    voice: { id, ...(name ? { name } : {}) },
+    voice: { id, ...(name ? { name } : {}), ...(model ? { model } : {}) },
     styles,
     created: opt.created ?? side.created ?? new Date().toISOString(),
     source: side.source ?? { packer: PACKER, from: path.basename(path.resolve(dir)), files: e.files },
@@ -139,4 +140,4 @@ if (cmd === 'pack' && pos[0] && opt.o) pack(pos[0], opt.o, opt);
 else if (cmd === 'unpack' && pos[0] && opt.o) unpack(pos[0], opt.o, opt.g2p);
 else if (cmd === 'g2p' && pos[0] && opt.o) g2p(pos[0], opt.o);
 else if (cmd === 'info' && pos[0]) { const z = read(pos[0]); const { acoustic, vocoder, ...h } = z.header; console.log(JSON.stringify({ ...h, acousticTensors: acoustic.tensors.length, vocoderTensors: vocoder.tensors.length, fileBytes: z.b.length }, null, 1)); }
-else die('usage: pack <export dir> -o x.ztm [--id] [--name-ja] [--name-en] [--created] | unpack <x.ztm> -o <dir> --g2p <models>/g2p | g2p <export dir> -o <dir> | info <x.ztm>');
+else die('usage: pack <export dir> -o x.ztm [--id] [--name-ja] [--name-en] [--model] [--created] | unpack <x.ztm> -o <dir> --g2p <models>/g2p | g2p <export dir> -o <dir> | info <x.ztm>');

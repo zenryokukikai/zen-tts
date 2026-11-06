@@ -13,6 +13,8 @@ export const NSF = {
   sampleRate: 44100,
   lnEps: 1e-6,
   maxMag: 100,
+  /** cap of the noise gain exp(log G) for noiseBranch 'direct' (the training clamp) */
+  noiseMaxMag: 1e4,
   f0zDim: 192,
   f0zFf: 576,
   f0zLayers: 4,
@@ -21,7 +23,8 @@ export const NSF = {
 /**
  * float32 weights, linear ones [in, out]. Keys `<p>embed.w` [7 * C, D] (row k * C + c), `<p>embed.b`, `<p>embed.norm`
  * [w | b], per block `<p><l>.dw` [dw w (D * 7) | dw b | ln w | ln b], `<p><l>.pw1.w|b`, `<p><l>.pw2.w|b` (gamma folded in),
- * then `final.norm`, `head.w` [384, 3075], `head.b` (p = '') and `f0z.out.w` [192, 2], `f0z.out.b` (p = 'f0z.').
+ * then `final.norm`, `head.w` [384, 3075] (noiseBranch 'direct': [384, 5125]), `head.b` (p = '') and `f0z.out.w` [192, 2],
+ * `f0z.out.b` (p = 'f0z.').
  */
 export type NsfWeights = Record<string, Float32Array>;
 
@@ -42,6 +45,30 @@ export interface NsfExportMeta {
    * changing the weights; gain > 1 also enables the peak limiter (applyOutputLevel). hashiro: 2.8.
    */
   outputGain?: number;
+  /**
+   * How the decoder makes the noise part of the spectrum. Omitted: nsf.out has 3 * 1025 rows [log|H| | phase H | log G] and
+   * the noise is G * STFT(white noise). 'direct' (1.2.0): nsf.out has 5 * 1025 rows [log|H| | phase H | log G | nx | ny]
+   * and the noise spectrum is made directly, min(exp(log G), noiseMaxMag) * (nx, ny) / |(nx, ny)|, with no white noise.
+   */
+  noiseBranch?: 'direct';
+  /** the cap of exp(log G) for noiseBranch 'direct'; must be NSF.noiseMaxMag when given */
+  noiseMaxMag?: number;
+}
+
+/** Rows of nsf.out per frequency bin: 5 for noiseBranch 'direct', else 3. */
+export function nsfHeadRows(meta: Pick<NsfExportMeta, 'noiseBranch' | 'noiseMaxMag'>): 3 | 5 {
+  if (meta.noiseBranch === undefined) return 3;
+  if (meta.noiseBranch !== 'direct') throw new Error(`nsf.json: unknown noiseBranch ${String(meta.noiseBranch)}`);
+  if (meta.noiseMaxMag !== undefined && meta.noiseMaxMag !== NSF.noiseMaxMag) throw new Error(`nsf.json: noiseMaxMag ${meta.noiseMaxMag} (this runtime: ${NSF.noiseMaxMag})`);
+  return 5;
+}
+
+/** Whether decoder weights have the 'direct' noise head (head.b of 5 * 1025), else the white-noise one (3 * 1025). */
+export function nsfDirectNoise(W: NsfWeights): boolean {
+  const n = W['head.b']?.length;
+  if (n === 5 * NSF.bins) return true;
+  if (n === 3 * NSF.bins) return false;
+  throw new Error(`nsf weights: head.b has ${n} values (want ${3 * NSF.bins} or ${5 * NSF.bins})`);
 }
 
 /** The decoder's F0 input / f0z output normalisation: x = (ln F0 - logF0Mean) / logF0Std. */
@@ -133,8 +160,9 @@ export function nsfExportToWeights(meta: NsfExportMeta, bin: ArrayBuffer): NsfWe
     }
   }
   w['final.norm'] = cat(get('nsf.final_norm.weight', NSF.dim), get('nsf.final_norm.bias', NSF.dim));
-  w['head.w'] = transpose(get('nsf.out.weight', 3 * NSF.bins * NSF.dim), 3 * NSF.bins, NSF.dim);
-  w['head.b'] = get('nsf.out.bias', 3 * NSF.bins);
+  const rows = nsfHeadRows(meta) * NSF.bins;
+  w['head.w'] = transpose(get('nsf.out.weight', rows * NSF.dim), rows, NSF.dim);
+  w['head.b'] = get('nsf.out.bias', rows);
   w['f0z.out.w'] = transpose(get('f0z.out.weight', 2 * NSF.f0zDim), 2, NSF.f0zDim);
   w['f0z.out.b'] = get('f0z.out.bias', 2);
   const unused = meta.tensors.map((t) => t.name).filter((n) => !used.has(n));

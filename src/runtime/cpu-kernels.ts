@@ -12,7 +12,7 @@ interface WasmApi {
 }
 type Fn = (...a: number[]) => void;
 /** The kernels, in the order of the native addon's ids (native/x86/addon.c: call(id, buffer, ...args)). */
-export const KERNELS = ['lin_f32', 'lin_p16', 'lin_i8', 'im2col', 'dw_norm', 'vattn', 'frame_in', 'nsf_exc', 'nsf_stft', 'nsf_istft', 'nsf_ola'] as const;
+export const KERNELS = ['lin_f32', 'lin_p16', 'lin_i8', 'im2col', 'dw_norm', 'vattn', 'frame_in', 'nsf_exc', 'nsf_stft', 'nsf_istft', 'nsf_ola', 'nsf_stft_direct'] as const;
 export type KernelName = typeof KERNELS[number];
 /** A native build of native/tts-cpu.c (Node addon): runs kernel `id` on the bytes of `buffer` with the wasm kernel's arguments. */
 export interface NativeKernels { call(id: number, buffer: ArrayBuffer, ...args: number[]): void }
@@ -167,6 +167,7 @@ export class CpuKernels {
   readonly nsf: NsfKernels = {
     exc: (f0, T, noise, seed, ex) => this.fn.nsf_exc(f0, T, noise ? 1 : 0, seed, ex),
     stft: (ex, N, t0, nT, s, O, headOff, maxMag, Y, tab) => this.fn.nsf_stft(ex, N, t0, nT, s, O, headOff, maxMag, Y, tab),
+    stftDirect: (ex, N, t0, nT, s, O, headOff, maxMag, noiseMax, Y, tab) => this.fn.nsf_stft_direct(ex, N, t0, nT, s, O, headOff, maxMag, noiseMax, Y, tab),
     istft: (Y, t0, nT, frames, fbase, tab) => this.fn.nsf_istft(Y, t0, nT, frames, fbase, tab),
     ola: (frames, fbase, T, o0, count, y, tab) => this.fn.nsf_ola(frames, fbase, T, o0, count, y, tab),
   };
@@ -177,6 +178,8 @@ export interface NsfKernels {
   exc(f0: number, T: number, noise: boolean, seed: number, ex: number): void;
   /** Y [nT, 1025] complex of frames t0.. (head rows from headOff); tab: cos | sin of 2 pi k / 2048. */
   stft(ex: number, N: number, t0: number, nT: number, s: number, O: number, headOff: number, maxMag: number, Y: number, tab: number): void;
+  /** stft for noiseBranch 'direct' (head rows [log|H| | phase H | log G | nx | ny]): only e_h is read; noise = min(exp(log G), noiseMax) (nx, ny) / |(nx, ny)|. */
+  stftDirect(ex: number, N: number, t0: number, nT: number, s: number, O: number, headOff: number, maxMag: number, noiseMax: number, Y: number, tab: number): void;
   istft(Y: number, t0: number, nT: number, frames: number, fbase: number, tab: number): void;
   ola(frames: number, fbase: number, T: number, o0: number, count: number, y: number, tab: number): void;
 }

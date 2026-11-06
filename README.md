@@ -2,14 +2,14 @@
 
 日本語のニューラル音声合成（TTS）。5 つの感情スタイルを連続値で混合し、文中で時間的に遷移させられます。G2P からデコーダまでブラウザ内（WebGPU / WASM SIMD）と Node.js（CPU）で動作します。
 
-バージョン 1.1.0。4 voices（voice ごとに独立したモデル。G2P は共通）。voice のモデルは 1 ファイル（`.ztm`）で CDN から配布します（「モデルファイル」）。
+バージョン 1.2.0。4 voices（voice ごとに独立したモデル。G2P は共通）。voice のモデルは 1 ファイル（`.ztm`）で CDN から配布します（「モデルファイル」）。
 
 | voice | id | model | 特徴 |
 |---|---|---|---|
-| 全力 マリン（ぜんりょく まりん） | `marine` | marine-1.0 | やわらかく落ち着いた女性の声 |
-| 全力 ハシロウ（ぜんりょく はしろう） | `hashiro` | hashiro-1.0 | 落ち着いた、深みのある男性の声 |
-| 全力 カイ（ぜんりょく かい） | `kai` | kai-1.0 | 40代の男性。響きのある低音 |
-| 全力 キッカ（ぜんりょく きっか） | `kikka` | kikka-1.0 | 素朴で透明感のある若い女性の声 |
+| 全力 マリン（ぜんりょく まりん） | `marine` | marine-1.1 | やわらかく落ち着いた女性の声 |
+| 全力 ハシロウ（ぜんりょく はしろう） | `hashiro` | hashiro-1.1 | 落ち着いた、深みのある男性の声 |
+| 全力 カイ（ぜんりょく かい） | `kai` | kai-1.1 | 40代の男性。響きのある低音 |
+| 全力 キッカ（ぜんりょく きっか） | `kikka` | kikka-1.1 | 素朴で透明感のある若い女性の声 |
 
 ボイスクローン機能はありません。上記以外の voice のモデル作成は全力機械（https://zenryokukikai.com ）へご依頼ください。
 
@@ -21,7 +21,8 @@
 - **オンデバイス**：G2P、韻律予測、生成器、NSF デコーダ（44.1 kHz）まで、すべてクライアント側で実行。ブラウザは WebGPU、非対応時は WASM SIMD（Web Worker）。
 - **速度**：Intel Xeon 1 スレッドで RTF 0.042（「ほかの TTS との比較」）。ブラウザの CPU で RTF 約 0.09（Apple M3 Max）、iPhone で約 0.11。
 - **辞書**：語ごとに読み・アクセント型・拍ごとの相対ピッチ（`contour`）・長さ・句境界を登録。相対値なので、感情や文中位置によらず登録した形状で読みます。
-- **サイズ**：1 voice あたり 26.1 MB（`.ztm`、int8 / fp16）＋共通の G2P 4.99 MB、CPU カーネル（`cpu/tts-cpu.wasm`）57 KB。
+- **読み**：数字（10分 ジュップン、3本 サンボン）と英単語（Unity、Anthropic など）も読みのモデル（G2P）が読みます。組み込みの読みの辞書はありません。ローマ字（sushi、arigatou）と 3 文字までの大文字の略語（SDK エスディーケー）は規則で読みます（「読み」）。
+- **サイズ**：1 voice あたり 27.7 MB（`.ztm`、int8 / fp16）＋共通の G2P 13.5 MB、CPU カーネル（`cpu/tts-cpu.wasm`）60 KB。
 
 ## 関連リポジトリ
 
@@ -37,15 +38,15 @@ npm レジストリには公開していません。GitHub から指定します
 
 ```sh
 # npm
-npm i github:zenryokukikai/zen-tts#v1.1.0
+npm i github:zenryokukikai/zen-tts#v1.2.0
 # pnpm
-pnpm add github:zenryokukikai/zen-tts#v1.1.0
+pnpm add github:zenryokukikai/zen-tts#v1.2.0
 # yarn
-yarn add github:zenryokukikai/zen-tts#v1.1.0
+yarn add github:zenryokukikai/zen-tts#v1.2.0
 ```
 
 - Node.js 26.12.1（`.mise.toml` で固定、`mise install`）。開発は pnpm。
-- `#v1.1.0` はタグまたはコミットハッシュで固定してください。
+- `#v1.2.0` はタグまたはコミットハッシュで固定してください。
 - voice の重み（`.ztm`）はリポジトリに含まれません。CDN から読み込むか、ダウンロードして自分のサーバーに置きます（「モデルファイル」）。G2P（`models/g2p/`）はリポジトリに同梱。
 
 ## デモ
@@ -84,6 +85,8 @@ console.log(tts.backend, tts.voice);   // 'webgpu' か 'cpu'、声の id
 const r = await tts.speak('本日はご来店いただき、ありがとうございます。', {
   emotion: { happy: 70, neutral: 30 },
   strength: 1.2,                 // 抑揚の強さ（1 = 標準）
+  speed: 1.2,                    // 話す速さ（1 = 標準、0.5〜1.5）
+  pitch: 2,                      // 声の高さ（半音、0 = 標準、-6〜+12）
 });
 // r.audio: Float32Array（44.1 kHz、モノラル）、r.timing: 段ごとの時間
 const url = URL.createObjectURL(wavBlob(r.audio));
@@ -97,10 +100,51 @@ await tts.speak('落ち着いて聞いてください。もう我慢できませ
 ```
 
 - `speakStream(text, options)`：`AsyncIterable` で 1 文ずつ返す。分割は「。！？」と改行（`splitSentences()`）。
-- `speakWith(text, { blend, labels, f0Add, durScale })`：音単位の F0 加算・長さ倍率・アクセントラベルを与えて合成（デモのイントネーション編集が使用）。
+- `speed`・`pitch`：下の「速さと高さ」を参照。`speakStream` でも同じ。
+- `speakWith(text, { blend, labels, f0Add, durScale, speed, pitch })`：音単位の F0 加算・長さ倍率・アクセントラベル、文全体の速さ・高さを与えて合成（デモのイントネーション編集が使用）。
 - 感情名：`neutral`、`happy`、`sad`、`angry`、`apologetic`。
-- export：`VERSION`（`'1.1.0'`）、`VOICE`（既定 `'marine'`）、`VOICES`、`ztmUrl(id)`（その voice の CDN の URL）、`ZTM_BASE_URL`。`tts.voice` は使用中の voice id。
+- export：`VERSION`（`'1.2.0'`）、`VOICE`（既定 `'marine'`）、`VOICES`、`ztmUrl(id)`（その voice の CDN の URL）、`ZTM_BASE_URL`、`SPEED_MIN`・`SPEED_MAX`・`PITCH_MIN`・`PITCH_MAX`（速さと高さの範囲）。`tts.voice` は使用中の voice id。
 - `EMOTION_CURVES`：`ease`、`linear`、`fast-start`、`late-surge`、`switch`、`steps`、`hill`、`valley`、`wave`。
+
+## 速さと高さ
+
+`speak(text, { speed, pitch })`（`speakStream` も同じ）で、文全体の話す速さと声の高さを変えられます。省くと、出力はこれまでとビット単位で同じです。
+
+| オプション | 意味 | 範囲（外は RangeError） |
+|---|---|---|
+| `speed` | 話す速さの倍率。音の長さ（句読点の間も含む）を `speed` で割る。声の高さは変わらない | 0.5〜1.5（`SPEED_MIN`・`SPEED_MAX`） |
+| `pitch` | 文全体に足す高さ（半音）。長さは変わらない | −6〜+12（`PITCH_MIN`・`PITCH_MAX`） |
+
+- 適用する順番：モデルの予測 → 辞書（`pitch`・`length` など）→ `f0Add`・`durScale` → `speed`・`pitch`。辞書や感情の配合・遷移と一緒に使えます。
+- 長さは 1 コマ（512 サンプル、約 11.6 ms）単位です。音ごとに割ったあと、合計が「元の合計 ÷ speed」から 1 コマ以上ずれないように丸め、どの音も 1 コマ以上残します。
+- 句読点の間も同じ割合で縮み・伸びます（話す速さを変えたとき、間だけが元のままだと不自然なため）。
+- `r.timing.frames`・`r.dur` は変えたあとの値です。音声の長さは `frames × 512` サンプルと一致するので、ZEN-LipSync などに渡す時間の情報もそのまま合います。
+- `speakStream` は、`speed` が 1 より小さいとき、1 文の上限（120 文字）を `120 × speed` 文字に縮めます。1 回の合成の上限（2,048 コマ、約 23.8 秒）を超えないためです。
+
+範囲は測って決めました（29 文 × 2 声〈A・B〉、5 つの感情、Whisper で読んだかなの誤り率〈CER〉、WavLM の話者の似かた〈参照音声との余弦〉）。
+
+| speed | 長さの比（目標） | CER（A／B） | 似かた |
+|---|---|---|---|
+| 1（既定） | 1.000 | 0.000／0.007 | 0.915／0.932 |
+| 0.5 | 2.000（2.0） | 0.006／0.020 | 0.914／0.939 |
+| 0.75 | 1.333（1.333） | 0.001／0.009 | 0.913／0.944 |
+| 1.25 | 0.800（0.8） | 0.002／0.005 | 0.912／0.923 |
+| 1.5 | 0.667（0.667） | 0.018／0.059 | 0.892／0.895 |
+| 1.75（範囲外） | 0.572（0.571） | 0.137／0.178 | 0.883／0.890 |
+| 2（範囲外） | 0.501（0.5） | 0.344／0.430 | 0.873／0.890 |
+
+| pitch | 測った高さの変化（半音） | CER | 似かた |
+|---|---|---|---|
+| −9（範囲外） | −6.0／−5.7 | 0.007／0.012 | 0.920／0.917 |
+| −6 | −5.1／−4.4 | 0.011／0.011 | 0.922／0.925 |
+| −3 | −2.9／−2.6 | 0.006／0.005 | 0.921／0.929 |
+| +3 | +2.9／+2.7 | 0.003／0.007 | 0.902／0.918 |
+| +6 | +5.7／+5.5 | 0.006／0.012 | 0.880／0.886 |
+| +12 | +11.1／+10.5 | 0.037／0.037 | 0.806／0.850 |
+
+- 速くすると 1.5 倍までは読みが保たれ、1.75 倍で崩れます（短い音が 1 コマに詰まる）。遅くするのは 0.5 倍でも問題ありません。
+- 低くする方向は、−5〜−6 半音より下には下がりません（声を作る部分が、その声の高さの範囲から外れた値を受け付けないため）。そのため範囲は −6 までにしました。上げる方向は +12 まで追従しますが、上げるほど元の声から離れます（+6 で似かた 0.88）。
+- 音の壊れ（NaN）は、どの設定でも 0 でした。`frames × 512` と音声のサンプル数は、すべての文・設定で一致しました。
 
 ## Node.js で使う（サーバー、CPU）
 
@@ -169,29 +213,39 @@ for await (const c of tts.speakStream('こんにちは。全力マリンです�
 
 ### 組み込みの辞書
 
-`src/runtime/builtin-dict.ts`。`speak` / `analyze` はユーザー辞書の前に適用します。同じ `surface` のユーザー項目が優先されます。
+ありません（`src/runtime/builtin-dict.ts` は空です）。読みは読みのモデル（G2P）が決めます。読みを直したいときは、ユーザー辞書を使ってください。
+
+## 読み
+
+- **数字**：数字のまま読みのモデルに渡し、モデルが読みます（`10分` ジュップン、`十分` ジュウブン、`3分の2` サンブンノニ、`2026年11月5日`）。前処理は、桁区切りのカンマを外す（`1,280` → `1280`）、通貨記号を後ろの語にする（`$5` → `5ドル`）、数字の間の `〜` を「から」、`%` を「パーセント」、数字の間の `.` を「点」にすることだけです。
+- **英単語**：小文字にして読みのモデルに渡し、モデルが読みます（`Unity` ユニティ）。モデルが学んでいない語は、うまく読めないことがあります。そのときはユーザー辞書に登録してください。
+- **ローマ字**：日本語のローマ字（ヘボン式・訓令式、`sushi` すし、`arigatou` ありがとう）は規則でひらがなにします。ローマ字としても読める英単語（`game`、`nose`、`again`）は英単語として扱います（`src/runtime/latin-words.ts` の除外リスト）。
+- **略語**：大文字だけで 3 文字までの語は、アルファベットの名前で読みます（`SDK` エスディーケー、`PDF` ピーディーエフ）。
+- URL・メールアドレス・ファイル名は書いたまま渡します。
+- `speak(text, { latin: false })` で、ローマ字と略語の規則を止められます（英字はそのまま読みのモデルに渡ります）。
+- くわしくは [docs/SPEC-text-frontend.md](docs/SPEC-text-frontend.md)。
 
 ## モデルファイル
 
-1.1.0 から、voice の重みは 1 voice 1 ファイル（`.ztm`、形式は [docs/ztm-format.md](docs/ztm-format.md)）で CDN から配布します。リポジトリには含みません。
+voice の重みは 1 voice 1 ファイル（`.ztm`、形式は [docs/ztm-format.md](docs/ztm-format.md)）で CDN から配布します。リポジトリには含みません。
 
 | voice | URL | サイズ | sha256 |
 |---|---|---|---|
-| `marine` | https://tts-models.zenryoku.work/v1.1.0/marine.ztm | 26.1 MB | `3fce81efbbb598b546429c6e53955a6d18fdbc9bca72afd029baf2eac06678a0` |
-| `hashiro` | https://tts-models.zenryoku.work/v1.1.0/hashiro.ztm | 26.1 MB | `ad6557b1d5e427c3466203a6b450530b70480b4a825129c734322de39d269230` |
-| `kai` | https://tts-models.zenryoku.work/v1.1.0/kai.ztm | 26.1 MB | `653d1c14b6eff80a0d28e483422a43ad82c3b78f8ead61cb7aa1984062883e33` |
-| `kikka` | https://tts-models.zenryoku.work/v1.1.0/kikka.ztm | 26.1 MB | `1875058d12bf15815638542e8b1178af56f63ca29120b5c7f5b97d38e4cc5c17` |
+| `marine` | https://tts-models.zenryoku.work/v1.2.0/marine.ztm | 27.7 MB | `c5f5ff04d43c3a742790856f4639f6d801e5c9a951a4f11ae800775fa0ed11d5` |
+| `hashiro` | https://tts-models.zenryoku.work/v1.2.0/hashiro.ztm | 27.7 MB | `6b85821342690767c0156a3f2c390f05589ae91291c24cca545880f8d2c5b348` |
+| `kai` | https://tts-models.zenryoku.work/v1.2.0/kai.ztm | 27.7 MB | `c6f741f7269736de3abb063215f1f9a032aa5fc06a4e576f38accb407b04fdc4` |
+| `kikka` | https://tts-models.zenryoku.work/v1.2.0/kikka.ztm | 27.7 MB | `277cbd80a4fbff93988ff3b382fc29c8de98749a2c1cb1a8d6e0cc9e2fc869c8` |
 
 - `ztmUrl(id)` が上の URL を返します。CORS は全オリジン許可、`Cache-Control: immutable`（版ごとにパスを分けるため）。
 - 自分のサーバーに置く場合：上の URL からダウンロードし、`model` にその URL（ブラウザ）またはパス（Node）を指定します。
 
 | ファイル | サイズ | 内容 |
 |---|---|---|
-| `<voice>.ztm` | 26.1 MB | 韻律予測器・生成器（int8）と NSF デコーダ（fp16、44.1 kHz）。voice ごと |
-| `models/g2p/g2p.bin`、`g2p.json` | 4.99 MB | G2P（全 voice 共通）。リポジトリと npm パッケージに同梱。ブラウザでは `modelsUrl` の `g2p/` に配置 |
-| `cpu/tts-cpu.wasm` | 57 KB | CPU カーネル（WASM SIMD128）。ソースは `native/tts-cpu.c`、`pnpm build:wasm` で再生成（clang + wasm-ld、`WASM_LLVM_BIN`） |
+| `<voice>.ztm` | 27.7 MB | 韻律予測器・生成器（int8）と NSF デコーダ（fp16、44.1 kHz）。voice ごと |
+| `models/g2p/g2p.bin`、`g2p.json` | 13.5 MB | G2P（全 voice 共通）。リポジトリと npm パッケージに同梱。ブラウザでは `modelsUrl` の `g2p/` に配置 |
+| `cpu/tts-cpu.wasm` | 60 KB | CPU カーネル（WASM SIMD128）。ソースは `native/tts-cpu.c`、`pnpm build:wasm` で再生成（clang + wasm-ld、`WASM_LLVM_BIN`） |
 
-1.0.0 の 4 ファイル構成（`tts/`・`decoder/`・`voices/<id>/`）も、`voice` オプションでそのまま読み込めます。そのファイルは v1.0.0 タグの `models/` にあります（https://github.com/zenryokukikai/zen-tts/tree/v1.0.0/models ）。
+1.1.0 の `.ztm`（https://tts-models.zenryoku.work/v1.1.0/<id>.ztm ）も、1.2.0 のランタイムでそのまま読み込めます（同じ音が出ます）。1.0.0 の 4 ファイル構成（`tts/`・`decoder/`・`voices/<id>/`）も、`voice` オプションでそのまま読み込めます。そのファイルは v1.0.0 タグの `models/` にあります（https://github.com/zenryokukikai/zen-tts/tree/v1.0.0/models ）。
 
 ### ネイティブカーネル（x86-64、Node.js）
 

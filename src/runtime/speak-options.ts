@@ -3,6 +3,7 @@
 import { blendFrom, emotionNames, neutralBlend, type EmotionBlend, type EmotionName } from './emotion.js';
 import { ttsDemoCurveBlend, type TtsDemoCurve } from './emotion-curve.js';
 import type { OwnSpeakOptions } from './tts-own-device.js';
+import { checkSpeedPitch } from './speak-rate.js';
 import type { OwnDictEntry, OwnDictSettings } from './tts-own-prosody.js';
 
 /** Relative amounts per emotion (any non-negative numbers; only their ratio matters). Missing = 0; all 0 = neutral. */
@@ -28,6 +29,14 @@ export interface SpeakOptions {
   /** Reading / intonation dictionary entries. */
   dict?: readonly OwnDictEntry[];
   settings?: OwnDictSettings;
+  /** Romaji and short acronyms by rule (arigatou → ありがとう, SDK → エスディーケー; English words go to the G2P in lower case);
+   *  default true. false: Latin letters go to the G2P as written. */
+  latin?: boolean;
+  /** Speaking rate: 1 = as the model predicts, 1.5 = 1.5 times as fast (all durations / speed, pauses included).
+   *  0.5..1.5 (outside: RangeError). */
+  speed?: number;
+  /** Pitch: semitones added to the whole utterance (0 = as predicted). -6..12 (outside: RangeError). */
+  pitch?: number;
 }
 
 /** SpeakOptions -> the engine's options (blend, and blendAt for `change`). */
@@ -37,6 +46,10 @@ export function engineOptionsOf(o: SpeakOptions): OwnSpeakOptions {
   if (o.strength !== undefined) opts.strength = o.strength;
   if (o.dict) opts.dict = o.dict;
   if (o.settings) opts.settings = o.settings;
+  if (o.latin !== undefined) opts.latin = o.latin;
+  checkSpeedPitch(o.speed, o.pitch);
+  if (o.speed !== undefined) opts.speed = o.speed;
+  if (o.pitch !== undefined) opts.pitch = o.pitch;
   if (o.change) {
     const c = o.change;
     opts.blendAt = ttsDemoCurveBlend(blend, emotionBlend(c.to), c.curve ?? 'ease', c.from ?? 0, c.until ?? 1);

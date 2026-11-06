@@ -46,7 +46,8 @@ export interface ZtmSection { offset: number; bytes: number; sha256: string }
 export interface ZtmHeader {
   format: 'zen-tts-model';
   version: 1;
-  voice: { id: string; name?: { ja?: string; en?: string } };
+  /** model: the voice package version (e.g. marine-1.1; 1.2.0 and later) */
+  voice: { id: string; name?: { ja?: string; en?: string }; model?: string };
   /** style names in the order of the style rows (this runtime plays the five emotionNames only) */
   styles?: string[];
   created?: string;

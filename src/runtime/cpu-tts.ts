@@ -3,8 +3,9 @@
 // of WgslOwnTts (G2P embedding, argmax, predictor input, prosody, dictionary) are the same shared functions. DOM-free.
 import { emotionNames, type EmotionBlend } from './emotion.js';
 import { normalizeOwnText } from './ja-text-normalize.js';
+import { applySpeedPitch } from './speak-rate.js';
 import {
-  applyOwnDict, dictLabels, dictProsody, frameRows, predictorInput, prosodyFromHead, slotsToPhones, templateParams, voiceDictSettings,
+  applyOwnDict, dictLabels, dropEndMark, withEndMark, dictProsody, frameRows, predictorInput, prosodyFromHead, slotsToPhones, templateParams, voiceDictSettings,
   type DictWord, type OwnDictEntry, type OwnMeta, type OwnProsody,
 } from './tts-own-prosody.js';
 import type { OwnSpeakOptions, OwnSpeakResult } from './tts-own-device.js';
@@ -230,13 +231,16 @@ export class CpuOwnTts {
   }
 
   /** G2P labels of text (normalized, after dictionary L1), as WgslOwnTts.analyze. */
-  analyze(text: string, dict: readonly OwnDictEntry[] = []): { norm: string; g2pText: string; unknown: string[]; g2p: { phones: string[]; marks: number[]; spans: [number, number][] }; phones: string[]; marks: number[]; words: DictWord[]; aligned: boolean } {
-    const norm = normalizeOwnText(text);
-    const d = applyOwnDict(norm, dict);
+  analyze(text: string, dict: readonly OwnDictEntry[] = [], latin = true): { norm: string; g2pText: string; unknown: string[]; g2p: { phones: string[]; marks: number[]; spans: [number, number][] }; phones: string[]; marks: number[]; words: DictWord[]; aligned: boolean } {
+    const norm = normalizeOwnText(text, { latin });
+    const d0 = applyOwnDict(norm, dict, latin);
+    const d = d0;
     const ids: number[] = [];
     const unknown: string[] = [];
-    for (const ch of d.text) { const id = this.cid.get(ch); if (id === undefined) unknown.push(ch); ids.push(id ?? this.meta.charUnk); }
-    const g = slotsToPhones(this.g2p(ids), this.meta, this.meta.shape.g2p.slots);
+    const inp = withEndMark(d.text, this.punct);
+    for (const ch of inp.text) { const id = this.cid.get(ch); if (id === undefined) unknown.push(ch); ids.push(id ?? this.meta.charUnk); }
+    const g0 = slotsToPhones(this.g2p(ids), this.meta, this.meta.shape.g2p.slots);
+    const g = inp.added ? dropEndMark(g0) : g0;
     return { norm, g2pText: d.text, unknown, g2p: g, ...dictLabels(g, d.matches, this.meta.kana) };
   }
 
@@ -244,7 +248,7 @@ export class CpuOwnTts {
   speak(text: string, o: Omit<OwnSpeakOptions, 'stream'>): OwnSpeakResult {
     const t0 = performance.now();
     const settings = voiceDictSettings(o.settings, this.meta);
-    const a = this.analyze(text, o.dict ?? []);
+    const a = this.analyze(text, o.dict ?? [], o.latin ?? true);
     const t1 = performance.now();
     const phones = o.labels?.phones ?? a.phones;
     const marks = o.labels?.marks ?? a.marks;
@@ -269,6 +273,7 @@ export class CpuOwnTts {
     if (words.length) ({ f0, dur } = dictProsody(base ?? pr, pr, words, this.meta, o.blend, settings));
     if (o.f0Add) f0 = f0.map((v, i) => v + (i > 0 && i <= o.f0Add!.length ? o.f0Add![i - 1]! : 0));
     if (o.durScale) dur = dur.map((v, i) => (i > 0 && i <= o.durScale!.length ? Math.max(1, Math.round(v * o.durScale![i - 1]!)) : v));
+    ({ f0, dur } = applySpeedPitch(f0, dur, o.speed, o.pitch));
     const t2 = performance.now();
     const rows = { dur, f0, energy: pr.energy, voiced: pr.voiced };
     let z: Float32Array;

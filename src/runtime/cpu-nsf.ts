@@ -3,7 +3,7 @@
 // rounding), only the order of float additions differs. Whole chunk in one run. DOM-free (runs in a Worker).
 import { toHalf } from './half.js';
 import { CpuKernels, type CpuLinear } from './cpu-kernels.js';
-import { DEFAULT_NSF_F0_NORM, F0Z, NSF, TRUNK, applyOutputLevel, type Net, type NsfF0Norm, type NsfWeights } from './nsf-weights.js';
+import { DEFAULT_NSF_F0_NORM, F0Z, NSF, TRUNK, applyOutputLevel, nsfDirectNoise, type Net, type NsfF0Norm, type NsfWeights } from './nsf-weights.js';
 
 interface CpuNet { embed: CpuLinear; embedNorm: number; blocks: { dw: number; pw1: CpuLinear; pw2: CpuLinear }[] }
 
@@ -15,6 +15,8 @@ export class CpuNsfDecoder {
   private readonly trunk: CpuNet;
   private readonly finalNorm: number;
   private readonly head: CpuLinear;
+  /** noiseBranch 'direct' (head 5 * 1025, no white noise), else the white-noise decoder */
+  private readonly direct: boolean;
   /** cos (2048) | sin (2048) of 2 pi k / 2048 */
   private readonly tab: number;
 
@@ -39,7 +41,8 @@ export class CpuNsfDecoder {
     this.f0zOut = lin('f0z.out.w', 'f0z.out.b', NSF.f0zDim, 2);
     this.trunk = net(TRUNK);
     this.finalNorm = k.put(need('final.norm'));
-    this.head = lin('head.w', 'head.b', NSF.dim, 3 * NSF.bins);
+    this.direct = nsfDirectNoise(W);
+    this.head = lin('head.w', 'head.b', NSF.dim, (this.direct ? 5 : 3) * NSF.bins);
     const tab = new Float32Array(2 * NSF.nFft);
     for (let i = 0; i < NSF.nFft; i++) { tab[i] = Math.cos(2 * Math.PI * i / NSF.nFft); tab[NSF.nFft + i] = Math.sin(2 * Math.PI * i / NSF.nFft); }
     this.tab = k.put(tab);
@@ -108,10 +111,12 @@ export class CpuNsfDecoder {
       const f0p = k.floats(T, f0);
       const ex = k.floats(2 * N);
       if (opt.noise) { const e = k.f32(ex, 2 * N); for (let i = 0; i < N; i++) e[2 * i + 1] = opt.noise[i]!; }
-      k.nsf.exc(f0p, T, !opt.noise, this.seed, ex);
+      // direct: e_n is not read (nsf_stft_direct takes e_h only), so no noise is drawn
+      k.nsf.exc(f0p, T, !this.direct && !opt.noise, this.seed, ex);
       lap('source');
       const Y = k.floats(T * NSF.bins * 2);
-      k.nsf.stft(ex, N, 0, T, head, this.head.O4 * 4, 0, NSF.maxMag, Y, this.tab);
+      if (this.direct) k.nsf.stftDirect(ex, N, 0, T, head, this.head.O4 * 4, 0, NSF.maxMag, NSF.noiseMaxMag, Y, this.tab);
+      else k.nsf.stft(ex, N, 0, T, head, this.head.O4 * 4, 0, NSF.maxMag, Y, this.tab);
       lap('filter');
       const frames = k.floats(T * NSF.nFft);
       k.nsf.istft(Y, 0, T, frames, 0, this.tab);

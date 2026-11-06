@@ -59,7 +59,11 @@ const marineZtm = async () => {
   const p = path.join(tmp, 'marine.ztm');
   if (!fs.existsSync(p)) {
     if (legacy) pack('pack', legacy, '-o', p, '--id', 'marine', '--created', '2026-10-31T00:00:00Z');
-    else { const r = await fetch(ztmUrl('marine')); assert.ok(r.ok, `${ztmUrl('marine')}: ${r.status}`); fs.writeFileSync(p, Buffer.from(await r.arrayBuffer())); }
+    else if (process.env.ZTM_MARINE) fs.copyFileSync(process.env.ZTM_MARINE, p); // a local marine .ztm
+    else {
+      const url = ztmUrl('marine');
+      const r = await fetch(url); assert.ok(r.ok, `${url}: ${r.status}`); fs.writeFileSync(p, Buffer.from(await r.arrayBuffer()));
+    }
   }
   return p;
 };
@@ -98,7 +102,22 @@ test('parseZtm: refuses a wrong magic, a newer version, sections out of bounds, 
 });
 
 test('ztmUrl: the CDN URL of each voice of this release', () => {
-  assert.equal(ztmUrl(), 'https://tts-models.zenryoku.work/v1.1.0/marine.ztm');
-  assert.equal(ztmUrl('kikka'), 'https://tts-models.zenryoku.work/v1.1.0/kikka.ztm');
+  assert.equal(ztmUrl(), 'https://tts-models.zenryoku.work/v1.2.0/marine.ztm');
+  assert.equal(ztmUrl('kikka'), 'https://tts-models.zenryoku.work/v1.2.0/kikka.ztm');
   assert.throws(() => ztmUrl('nobody'), /unknown voice/);
+});
+
+test('pack-ztm: --model sets voice.model, and unpack -> pack keeps it (the 1.2.0 voices are <id>-1.1)', async () => {
+  for (const id of Object.keys(VOICES)) assert.match(VOICES[id].model, new RegExp(`^${id}-1\\.1$`));
+  const u = path.join(tmp, 'marine-model');
+  pack('unpack', await marineZtm(), '-o', u, '--g2p', g2pDir);
+  const a = path.join(tmp, 'marine-model.ztm');
+  pack('pack', u, '-o', a, '--model', VOICES.marine.model);
+  const ab = (b) => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
+  assert.equal(parseZtm(ab(fs.readFileSync(a))).header.voice.model, 'marine-1.1');
+  const u2 = path.join(tmp, 'marine-model-u');
+  pack('unpack', a, '-o', u2, '--g2p', g2pDir);
+  const b = path.join(tmp, 'marine-model-b.ztm');
+  pack('pack', u2, '-o', b);
+  assert.equal(sha(fs.readFileSync(b)), sha(fs.readFileSync(a)));
 });

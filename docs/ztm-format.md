@@ -18,20 +18,21 @@
 ### ヘッダー（JSON）
 
 - `format: "zen-tts-model"`、`version: 1`
-- `voice`：`{ id, name?: { ja?, en? } }`
+- `voice`：`{ id, name?: { ja?, en? }, model? }`。`model` は voice のバージョン（例 `marine-1.1`、1.2.0 から。ランタイムの `VOICES[id].model` と同じ）
 - `styles`：スタイル名（スタイル行の順）。このランタイムは `neutral`, `happy`, `sad`, `angry`, `apologetic` のみ読み込みます。
 - `created`：作成日時。`source`：作成ツールと、元の 4 ファイルの SHA-256。
 - `g2p`：`{ sha256, bytes }`。その voice を作成・確認したときの G2P のバイト列のハッシュ。
 - `acoustic`：`{ meta, tensors }`。meta は own.json から G2P の表と `g2p.*` を除いたもの。テンソルの offset は acoustic セクションの先頭から。
 - `vocoder`：`{ meta, tensors }`。meta は nsf.json の `tensors` 以外（`dtype`・`logF0Mean`・`logF0Std`・`outputGain` など）。テンソルの offset は vocoder セクションの先頭から。
+  - `noiseBranch: 'direct'`（1.2.0 から）：雑音の部分を白い雑音から作らず、デコーダが周波数ごとの強さと位相を直接出す。`nsf.out` は 5 × 1025 行（log|H|・H の位相・log G・nx・ny）で、雑音のスペクトルは min(exp(log G), `noiseMaxMag` = 10000) × (nx, ny) / |(nx, ny)|。この項目がない voice（1.1.0 まで）は 3 × 1025 行で、これまでと同じ出力（ビット単位で同じ）。1.1.0 までの runtime はこの voice を読めない（nsf.out の大きさが合わずエラーになる）。
 - `sections`：`acoustic`・`vocoder` の `{ offset, bytes, sha256 }`。offset はファイル先頭から。
 
 ## G2P はランタイム側
 
-- G2P（読みのモデル）は全 voice 共通なので .ztm には含めず、ランタイムの `models/g2p/g2p.json`・`g2p.bin`（4.99 MB、リポジトリに同梱）を使います。
+- G2P（読みのモデル）は全 voice 共通なので .ztm には含めず、ランタイムの `models/g2p/g2p.json`・`g2p.bin`（13.5 MB、リポジトリに同梱）を使います。
   - g2p.json：テンソル一覧、`shape.g2p`、`vocab`・`charPad`・`charUnk`・`phoneClasses`・`marks`・`punctuation`・`kana`、g2p.bin の SHA-256。
 - own.bin の先頭から `g2p.*` テンソルの終わり（4,987,392 バイト）までが G2P、その後ろが acoustic。
-- voice の `g2p.sha256` とランタイムの G2P が違うときは、警告を出して読み込みます（読みが確認時と変わることがあるため）。1.1.0 の 4 voices はすべて同じ G2P（`1a8877…`）です。
+- voice の `g2p.sha256` とランタイムの G2P が違うときは、警告を出して読み込みます（読みが確認時と変わることがあるため）。1.1.0 の 4 voices はすべて同じ G2P（`1a8877…`）です。1.2.0 の 4 voices は、1.2.0 の G2P（`33182b…`）で作成しています。1.1.0 の voice を 1.2.0 のランタイムで読むと、この警告が出ます（音は鳴ります）。
 
 ## 読み込み
 
@@ -65,7 +66,7 @@ node scripts/pack-ztm.mjs info kikka.ztm
 | | サイズ |
 |---|---|
 | 1.0.0 の 4 ファイル（1 voice） | 31.1 MB |
-| .ztm（1 voice） | 26.1 MB（G2P を含まない） |
-| G2P（ランタイム、全 voice 共通） | 4.99 MB ＋ g2p.json 45 KB |
+| .ztm（1 voice） | 27.7 MB（G2P を含まない） |
+| G2P（ランタイム、全 voice 共通） | 13.5 MB ＋ g2p.json 55 KB |
 
 int8 / fp16 の重みはほとんど圧縮できません（gzip で約 92%）。

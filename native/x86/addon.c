@@ -36,6 +36,7 @@ static napi_value call(napi_env env, napi_callback_info info) {
     case 8: nsf_stft(P(0), N(1), N(2), N(3), P(4), N(5), N(6), F(7), P(8), P(9)); break;
     case 9: nsf_istft(P(0), N(1), N(2), P(3), N(4), P(5)); break;
     case 10: nsf_ola(P(0), N(1), N(2), N(3), N(4), P(5), P(6)); break;
+    case 11: nsf_stft_direct(P(0), N(1), N(2), N(3), P(4), N(5), N(6), F(7), F(8), P(9), P(10)); break;
   }
   return NULL;
 }

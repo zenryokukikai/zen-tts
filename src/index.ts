@@ -30,6 +30,8 @@ export { parseZtm, type ZtmHeader } from './runtime/ztm.js';
 import { voiceDirs, type VoiceId } from './version.js';
 
 export { emotionBlend, splitSentences, type EmotionAmounts, type SpeakOptions } from './runtime/speak-options.js';
+export { SPEED_MIN, SPEED_MAX, PITCH_MIN, PITCH_MAX } from './runtime/speak-rate.js';
+import { streamMaxChars } from './runtime/speak-rate.js';
 
 /** Where the voice is made: 'webgpu', 'cpu' (WebAssembly SIMD), or 'auto' (WebGPU if available, else CPU). */
 export type Backend = 'auto' | 'webgpu' | 'cpu';
@@ -125,7 +127,7 @@ export class ZenTts {
   async *speakStream(text: string, o: SpeakOptions = {}): AsyncGenerator<SpeechChunk> {
     const opts = engineOptionsOf(o);
     let index = 0;
-    for (const sentence of splitSentences(text)) {
+    for (const sentence of splitSentences(text, streamMaxChars(o.speed))) {
       const r = await this.speakWith(sentence, opts);
       yield { index: index++, text: sentence, pcm: r.audio, sampleRate: SAMPLE_RATE, timing: r.timing };
     }

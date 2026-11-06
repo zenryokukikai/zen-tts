@@ -620,6 +620,79 @@ EXPORT("nsf_stft") void nsf_stft(const f32 *ex, int N, int t0, int nT, const f32
   }
 }
 
+/** One bin of nsf_stft_direct (fre / fim hold the FFT of e_h): Y = H X + min(exp(log G), noiseMax) (nx, ny) / |(nx, ny)|. */
+static inline void stft_direct_bin(int k, const f32 *row, f32 *yr, f32 maxMag, f32 noiseMax, const f32 *cs, const f32 *sn) {
+  int ka = k % NSF_NH, kb = (NSF_NH - k) % NSF_NH;
+  f32 zr = fre[ka], zi = fim[ka];
+  f32 cr = fre[kb], ci = -fim[kb];
+  f32 fer = (zr + cr) * 0.5f, fei = (zi + ci) * 0.5f;
+  f32 dr = (zr - cr) * 0.5f, di = (zi - ci) * 0.5f;
+  f32 for_ = di, foi = -dr;
+  f32 wr = cs[k], wi = -sn[k];
+  f32 xr = fer + (for_ * wr - foi * wi), xi = fei + (for_ * wi + foi * wr);
+  f32 mg = exp_(row[k]);
+  if (mg > maxMag) mg = maxMag;
+  f32 ps, pc;
+  sincos_(row[NSF_BINS + k], &ps, &pc);
+  f32 hr = mg * pc, hi = mg * ps;
+  f32 g = exp_(row[2 * NSF_BINS + k]);
+  if (g > noiseMax) g = noiseMax;
+  f32 nx = row[3 * NSF_BINS + k], ny = row[4 * NSF_BINS + k];
+  f32 sc = g / __builtin_sqrtf(nx * nx + ny * ny + 1e-8f);
+  yr[2 * k] = (hr * xr - hi * xi) + sc * nx;
+  yr[2 * k + 1] = (hr * xi + hi * xr) + sc * ny;
+}
+
+/**
+ * nsf_stft for a decoder with nsf.json noiseBranch 'direct': the head has 5 * 1025 rows per frame
+ * [log |H| | phase H | log G | nx | ny] and the noise spectrum is made directly, no white noise:
+ * Y[t] = H[t] STFT(e_h)[t] + min(exp(log G[t]), noiseMax) (nx, ny)[t] / |(nx, ny)[t]|. Only e_h (ex channel 0) is read.
+ */
+EXPORT("nsf_stft_direct") void nsf_stft_direct(const f32 *ex, int N, int t0, int nT, const f32 *s, int O, int headOff, f32 maxMag, f32 noiseMax, f32 *Y, const f32 *tab) {
+  const f32 *cs = tab, *sn = tab + NSF_NFFT;
+  for (int w = 0; w < nT; w++) {
+    int t = w + t0;
+    const f32 *row = s + (w + headOff) * O;
+    f32 *yr = Y + w * NSF_BINS * 2;
+    for (int m = 0; m < NSF_NH; m++) {
+      uint32_t d = brev10((uint32_t)m);
+      for (int e = 0; e < 2; e++) {
+        int j = 2 * m + e;
+        int i = t * NSF_HOP + j - NSF_NH;
+        if (i < 0) i = -i;
+        if (i >= N) i = 2 * (N - 1) - i;
+        (e ? fim : fre)[d] = ex[2 * i] * (0.5f - 0.5f * cs[j]);
+      }
+    }
+    fft1024(-1.0f, tab);
+    for (int k = 0; k < 4; k++) stft_direct_bin(k, row, yr, maxMag, noiseMax, cs, sn);
+    // bins 4..1023 four at a time, lane-wise the same operations in the same order as stft_direct_bin
+    const v128_t half = wasm_f32x4_splat(0.5f), cap = wasm_f32x4_splat(maxMag), ncap = wasm_f32x4_splat(noiseMax), eps = wasm_f32x4_splat(1e-8f);
+    for (int k = 4; k < NSF_NH; k += 4) {
+      v128_t zr = wasm_v128_load(fre + k), zi = wasm_v128_load(fim + k);
+      v128_t cr = rev4(wasm_v128_load(fre + NSF_NH - k - 3)), ci = wasm_f32x4_neg(rev4(wasm_v128_load(fim + NSF_NH - k - 3)));
+      v128_t fer = wasm_f32x4_mul(wasm_f32x4_add(zr, cr), half), fei = wasm_f32x4_mul(wasm_f32x4_add(zi, ci), half);
+      v128_t dr = wasm_f32x4_mul(wasm_f32x4_sub(zr, cr), half), di = wasm_f32x4_mul(wasm_f32x4_sub(zi, ci), half);
+      v128_t for_ = di, foi = wasm_f32x4_neg(dr);
+      v128_t wr = wasm_v128_load(cs + k), wi = wasm_f32x4_neg(wasm_v128_load(sn + k));
+      v128_t xr = wasm_f32x4_add(fer, wasm_f32x4_sub(wasm_f32x4_mul(for_, wr), wasm_f32x4_mul(foi, wi)));
+      v128_t xi = wasm_f32x4_add(fei, wasm_f32x4_add(wasm_f32x4_mul(for_, wi), wasm_f32x4_mul(foi, wr)));
+      v128_t mg = wasm_f32x4_min(exp4(wasm_v128_load(row + k)), cap);
+      v128_t ps, pc;
+      sincos4(wasm_v128_load(row + NSF_BINS + k), &ps, &pc);
+      v128_t hr = wasm_f32x4_mul(mg, pc), hi = wasm_f32x4_mul(mg, ps);
+      v128_t g = wasm_f32x4_min(exp4(wasm_v128_load(row + 2 * NSF_BINS + k)), ncap);
+      v128_t nx = wasm_v128_load(row + 3 * NSF_BINS + k), ny = wasm_v128_load(row + 4 * NSF_BINS + k);
+      v128_t sc = wasm_f32x4_div(g, wasm_f32x4_sqrt(wasm_f32x4_add(wasm_f32x4_add(wasm_f32x4_mul(nx, nx), wasm_f32x4_mul(ny, ny)), eps)));
+      v128_t yre = wasm_f32x4_add(wasm_f32x4_sub(wasm_f32x4_mul(hr, xr), wasm_f32x4_mul(hi, xi)), wasm_f32x4_mul(sc, nx));
+      v128_t yim = wasm_f32x4_add(wasm_f32x4_add(wasm_f32x4_mul(hr, xi), wasm_f32x4_mul(hi, xr)), wasm_f32x4_mul(sc, ny));
+      wasm_v128_store(yr + 2 * k, zip_lo(yre, yim));
+      wasm_v128_store(yr + 2 * k + 4, zip_hi(yre, yim));
+    }
+    stft_direct_bin(NSF_NH, row, yr, maxMag, noiseMax, cs, sn);
+  }
+}
+
 /** Frames t0..t0+nT-1: frames[t - fbase] = hann * irfft_2048(Y[t - t0]) (ISTFT; frames [., 2048]). */
 EXPORT("nsf_istft") void nsf_istft(const f32 *Y, int t0, int nT, f32 *frames, int fbase, const f32 *tab) {
   const f32 *cs = tab, *sn = tab + NSF_NFFT;
