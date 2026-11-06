@@ -1,6 +1,6 @@
 // Parity of the noiseBranch 'direct' decoder (1.2.0) against a PyTorch reference, on WebGPU in headless Chromium (muted).
 // Inputs in DIR (not in the repository): <voice>.ztm with a 'direct' vocoder, and per sentence <id>.z.f32 ([T, 192]),
-// <id>.f0.f32 ([T] Hz) and <id>.ref.f32 (the PyTorch decoder's output from the same z / F0, fp16 weights).
+// <id>.f0.f32 ([T] Hz) and <id>.ref.f32 (the PyTorch decoder's output from the same z / F0, fp16 weights; since 1.2.1 with noise_phase).
 // Usage: pnpm build; pnpm serve (another terminal, from the repository root); DIR=<dir> VOICE=marine IDS=a,b
 //   node scripts/nsf-direct-parity.mjs [base url]
 // The CPU paths are checked by test/nsf-direct.test.mjs with the same inputs.

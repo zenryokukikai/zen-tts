@@ -120,6 +120,13 @@ struct P { T: u32 }
   for (var f = 0u; f < p.T; f++) { off[f] = acc; acc = fract(acc + fract(tot[f])); }
 }`;
 
+/** PCG hash (as pcg in native/tts-cpu.c): the white noise of excSource and the noise phase of the direct STFT. */
+const PCG = `fn pcg(v: u32) -> u32 {
+  let s = v * 747796405u + 2891336453u;
+  let w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
+  return (w >> 22u) ^ w;
+}`;
+
 /** Per sample: ex[n] = (e_h, e_n). noise 1: e_n from PCG + Box-Muller (seed); 0: ex[n].y is kept (written by the caller). */
 const EXC_SOURCE = `
 struct P { N: u32, noise: u32, seed: u32 }
@@ -129,11 +136,7 @@ struct P { N: u32, noise: u32, seed: u32 }
 @group(0) @binding(3) var<storage, read> off: array<f32>;
 @group(0) @binding(4) var<storage, read_write> ex: array<vec2<f32>>;
 const PI2 = 6.283185307179586;
-fn pcg(v: u32) -> u32 {
-  let s = v * 747796405u + 2891336453u;
-  let w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
-  return (w >> 22u) ^ w;
-}
+${PCG}
 fn wrap(a: f32) -> f32 { return a - PI2 * floor(a / PI2 + 0.5); }
 @compute @workgroup_size(${WG}) fn main(@builtin(global_invocation_id) g: vec3<u32>) {
   let n = g.x + g.y * 65535u * ${WG}u;
@@ -183,7 +186,8 @@ fn brev(m: u32) -> u32 { return reverseBits(m) >> ${32 - LOG2_NH}u; }`;
  * One workgroup per frame t: Y[t] = H[t] STFT(e_h)[t] + G[t] STFT(e_n)[t] (hann 2048, center reflect padding), each real
  * 2048-point FFT as a 1024-point complex FFT of z[m] = x[2m] + i x[2m + 1].
  * direct (nsf.json noiseBranch 'direct', head 5 * 1025): no white noise, only e_h is transformed and
- * Y[t] = H[t] STFT(e_h)[t] + min(exp(log G[t]), noiseMaxMag) (nx, ny)[t] / |(nx, ny)[t]|.
+ * Y[t] = H[t] STFT(e_h)[t] + min(exp(log G[t]), noiseMaxMag) (cos a, sin a), a = noisePhase(t, k) as noise_phase in
+ * native/tts-cpu.c (1.2.1: a random phase per frame and bin; the model's (nx, ny) repeat in quiet frames, an 86 Hz buzz, #13).
  */
 const STFT_FILTER = (direct: boolean): string => `
 struct P { T: u32, N: u32, O: u32, maxMag: f32, offset: u32, headOffset: u32 }
@@ -192,6 +196,8 @@ struct P { T: u32, N: u32, O: u32, maxMag: f32, offset: u32, headOffset: u32 }
 @group(0) @binding(2) var<storage, read> s: array<f32>;
 @group(0) @binding(3) var<storage, read_write> Y: array<vec2<f32>>;
 ${FFT_COMMON}
+${PCG}
+fn noisePhase(t: u32, k: u32) -> f32 { return 6.2831853 * (f32(pcg(t * 1031u + k * 7919u + 17u)) / 4294967295.0); }
 fn xs(t: u32, j: u32, c: u32) -> f32 {
   var i = i32(t * ${NSF.hop}u + j) - ${NH};
   if (i < 0) { i = -i; }
@@ -223,8 +229,8 @@ fn bin(k: u32) -> vec2<f32> {
         let m = min(exp(s[r + k]), p.maxMag);
         let ph = s[r + ${NSF.bins}u + k];
         Y[yr + k] = cmul(m * vec2<f32>(cos(ph), sin(ph)), X);${direct ? `
-        let nn = vec2<f32>(s[r + ${3 * NSF.bins}u + k], s[r + ${4 * NSF.bins}u + k]);
-        Y[yr + k] += min(exp(s[r + ${2 * NSF.bins}u + k]), ${NSF.noiseMaxMag.toFixed(1)}) * nn / sqrt(dot(nn, nn) + 1e-8);` : ''}
+        let a = noisePhase(t, k);
+        Y[yr + k] += min(exp(s[r + ${2 * NSF.bins}u + k]), ${NSF.noiseMaxMag.toFixed(1)}) * vec2<f32>(cos(a), sin(a));` : ''}
       } else {
         Y[yr + k] += min(exp(s[r + ${2 * NSF.bins}u + k]), p.maxMag) * X;
       }

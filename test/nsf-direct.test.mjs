@@ -1,4 +1,4 @@
-// noiseBranch 'direct' (1.2.0 decoders): nsf.json -> weights (5 * 1025 head rows), the flag's checks, and a voice without
+// noiseBranch 'direct' (1.2.0 decoders; since 1.2.1 the noise phase is noise_phase in native/tts-cpu.c, and the reference is made with that phase): nsf.json -> weights (5 * 1025 head rows), the flag's checks, and a voice without
 // the flag keeps the 3 * 1025 head. With NSF_DIRECT_DIR=<dir> (see scripts/nsf-direct-parity.mjs for its files: a
 // 'direct' .ztm and PyTorch reference renders) the CPU decoder (wasm, and the native builds that are built) is compared
 // with the reference; with NSF_OLD_ZTM=<a 1.1.0 .ztm> and NSF_OLD_PCM=<its sha list from the 1.1.0 runtime> the old

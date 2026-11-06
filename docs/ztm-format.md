@@ -24,7 +24,7 @@
 - `g2p`：`{ sha256, bytes }`。その voice を作成・確認したときの G2P のバイト列のハッシュ。
 - `acoustic`：`{ meta, tensors }`。meta は own.json から G2P の表と `g2p.*` を除いたもの。テンソルの offset は acoustic セクションの先頭から。
 - `vocoder`：`{ meta, tensors }`。meta は nsf.json の `tensors` 以外（`dtype`・`logF0Mean`・`logF0Std`・`outputGain` など）。テンソルの offset は vocoder セクションの先頭から。
-  - `noiseBranch: 'direct'`（1.2.0 から）：雑音の部分を白い雑音から作らず、デコーダが周波数ごとの強さと位相を直接出す。`nsf.out` は 5 × 1025 行（log|H|・H の位相・log G・nx・ny）で、雑音のスペクトルは min(exp(log G), `noiseMaxMag` = 10000) × (nx, ny) / |(nx, ny)|。この項目がない voice（1.1.0 まで）は 3 × 1025 行で、これまでと同じ出力（ビット単位で同じ）。1.1.0 までの runtime はこの voice を読めない（nsf.out の大きさが合わずエラーになる）。
+  - `noiseBranch: 'direct'`（1.2.0 から）：雑音の部分を白い雑音から作らず、デコーダが周波数ごとの強さと位相を直接出す。`nsf.out` は 5 × 1025 行（log|H|・H の位相・log G・nx・ny）で、雑音のスペクトルは min(exp(log G), `noiseMaxMag` = 10000) × (nx, ny) / |(nx, ny)|。1.2.1 の runtime は nx・ny を使わず、位相をフレームと周波数ごとの乱数（決まった式で、毎回同じ）にする（静かなところで nx・ny がフレームごとにほぼ同じになり、86 Hz のビリビリになるため）。この項目がない voice（1.1.0 まで）は 3 × 1025 行で、これまでと同じ出力（ビット単位で同じ）。1.1.0 までの runtime はこの voice を読めない（nsf.out の大きさが合わずエラーになる）。
 - `sections`：`acoustic`・`vocoder` の `{ offset, bytes, sha256 }`。offset はファイル先頭から。
 
 ## G2P はランタイム側

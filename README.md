@@ -2,7 +2,7 @@
 
 日本語のニューラル音声合成（TTS）。5 つの感情スタイルを連続値で混合し、文中で時間的に遷移させられます。G2P からデコーダまでブラウザ内（WebGPU / WASM SIMD）と Node.js（CPU）で動作します。
 
-バージョン 1.2.0。4 voices（voice ごとに独立したモデル。G2P は共通）。voice のモデルは 1 ファイル（`.ztm`）で CDN から配布します（「モデルファイル」）。
+バージョン 1.2.1。4 voices（voice ごとに独立したモデル。G2P は共通）。voice のモデルは 1 ファイル（`.ztm`）で CDN から配布します（「モデルファイル」）。
 
 | voice | id | model | 特徴 |
 |---|---|---|---|
@@ -38,15 +38,15 @@ npm レジストリには公開していません。GitHub から指定します
 
 ```sh
 # npm
-npm i github:zenryokukikai/zen-tts#v1.2.0
+npm i github:zenryokukikai/zen-tts#v1.2.1
 # pnpm
-pnpm add github:zenryokukikai/zen-tts#v1.2.0
+pnpm add github:zenryokukikai/zen-tts#v1.2.1
 # yarn
-yarn add github:zenryokukikai/zen-tts#v1.2.0
+yarn add github:zenryokukikai/zen-tts#v1.2.1
 ```
 
 - Node.js 26.12.1（`.mise.toml` で固定、`mise install`）。開発は pnpm。
-- `#v1.2.0` はタグまたはコミットハッシュで固定してください。
+- `#v1.2.1` はタグまたはコミットハッシュで固定してください。
 - voice の重み（`.ztm`）はリポジトリに含まれません。CDN から読み込むか、ダウンロードして自分のサーバーに置きます（「モデルファイル」）。G2P（`models/g2p/`）はリポジトリに同梱。
 
 ## デモ
@@ -103,7 +103,7 @@ await tts.speak('落ち着いて聞いてください。もう我慢できませ
 - `speed`・`pitch`：下の「速さと高さ」を参照。`speakStream` でも同じ。
 - `speakWith(text, { blend, labels, f0Add, durScale, speed, pitch })`：音単位の F0 加算・長さ倍率・アクセントラベル、文全体の速さ・高さを与えて合成（デモのイントネーション編集が使用）。
 - 感情名：`neutral`、`happy`、`sad`、`angry`、`apologetic`。
-- export：`VERSION`（`'1.2.0'`）、`VOICE`（既定 `'marine'`）、`VOICES`、`ztmUrl(id)`（その voice の CDN の URL）、`ZTM_BASE_URL`、`SPEED_MIN`・`SPEED_MAX`・`PITCH_MIN`・`PITCH_MAX`（速さと高さの範囲）。`tts.voice` は使用中の voice id。
+- export：`VERSION`（`'1.2.1'`）、`VOICE`（既定 `'marine'`）、`VOICES`、`ztmUrl(id)`（その voice の CDN の URL）、`ZTM_BASE_URL`、`SPEED_MIN`・`SPEED_MAX`・`PITCH_MIN`・`PITCH_MAX`（速さと高さの範囲）。`tts.voice` は使用中の voice id。
 - `EMOTION_CURVES`：`ease`、`linear`、`fast-start`、`late-surge`、`switch`、`steps`、`hill`、`valley`、`wave`。
 
 ## 速さと高さ
@@ -227,7 +227,7 @@ for await (const c of tts.speakStream('こんにちは。全力マリンです�
 
 ## モデルファイル
 
-voice の重みは 1 voice 1 ファイル（`.ztm`、形式は [docs/ztm-format.md](docs/ztm-format.md)）で CDN から配布します。リポジトリには含みません。
+voice の重みは 1 voice 1 ファイル（`.ztm`、形式は [docs/ztm-format.md](docs/ztm-format.md)）で CDN から配布します。リポジトリには含みません。1.2.1 は 1.2.0 と同じ `.ztm` を使います。
 
 | voice | URL | サイズ | sha256 |
 |---|---|---|---|
@@ -245,7 +245,7 @@ voice の重みは 1 voice 1 ファイル（`.ztm`、形式は [docs/ztm-format.
 | `models/g2p/g2p.bin`、`g2p.json` | 13.5 MB | G2P（全 voice 共通）。リポジトリと npm パッケージに同梱。ブラウザでは `modelsUrl` の `g2p/` に配置 |
 | `cpu/tts-cpu.wasm` | 60 KB | CPU カーネル（WASM SIMD128）。ソースは `native/tts-cpu.c`、`pnpm build:wasm` で再生成（clang + wasm-ld、`WASM_LLVM_BIN`） |
 
-1.1.0 の `.ztm`（https://tts-models.zenryoku.work/v1.1.0/<id>.ztm ）も、1.2.0 のランタイムでそのまま読み込めます（同じ音が出ます）。1.0.0 の 4 ファイル構成（`tts/`・`decoder/`・`voices/<id>/`）も、`voice` オプションでそのまま読み込めます。そのファイルは v1.0.0 タグの `models/` にあります（https://github.com/zenryokukikai/zen-tts/tree/v1.0.0/models ）。
+1.1.0 の `.ztm`（https://tts-models.zenryoku.work/v1.1.0/<id>.ztm ）も、1.2.0 以降のランタイムでそのまま読み込めます（同じ音が出ます）。1.0.0 の 4 ファイル構成（`tts/`・`decoder/`・`voices/<id>/`）も、`voice` オプションでそのまま読み込めます。そのファイルは v1.0.0 タグの `models/` にあります（https://github.com/zenryokukikai/zen-tts/tree/v1.0.0/models ）。
 
 ### ネイティブカーネル（x86-64、Node.js）
 
