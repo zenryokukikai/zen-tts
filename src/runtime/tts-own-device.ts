@@ -9,7 +9,7 @@ import { VITS_ATTN } from './vits-attn.js';
 import { NSF, WgslNsfDecoder, loadNsfWeights, nsfF0Norm, nsfOutputGain, type NsfPcmChunk } from './nsf-wgsl.js';
 import type { NsfExportMeta, NsfWeights } from './nsf-weights.js';
 import { emotionNames, type EmotionBlend } from './emotion.js';
-import { normalizeOwnText } from './ja-text-normalize.js';
+import { normalizeOwnText, numbersToAmounts, type NumberReading } from './ja-text-normalize.js';
 import { applySpeedPitch } from './speak-rate.js';
 import {
   applyOwnDict, dictLabels, dropEndMark, withEndMark, dictProsody, frameRows, predictorInput, prosodyFromHead, slotsToPhones, templateParams, voiceDictSettings,
@@ -68,6 +68,9 @@ export interface OwnSpeakOptions {
   settings?: OwnDictSettings;
   /** romaji and short acronyms by rule, English words to the G2P in lower case (docs/SPEC-text-frontend.md §3); default true */
   latin?: boolean;
+  /** long amounts and numbers before a unit (5+ digits): 'rule' (default) reads them by rule before the G2P (spec §1.5c),
+   *  'model' leaves them to the G2P */
+  numbers?: NumberReading;
   /** G2P labels to use instead of the G2P (e.g. high / low edited in a UI) */
   labels?: { phones: string[]; marks: number[] };
   /** per phone (no edge) semitones added / duration factor, after everything (e.g. pitch / length edited in a UI) */
@@ -488,8 +491,8 @@ export class WgslOwnTts {
   }
 
   /** G2P labels of text (normalized, after dictionary L1): for showing / editing the readings and accents. */
-  async analyze(text: string, dict: readonly OwnDictEntry[] = [], latin = true): Promise<{ norm: string; g2pText: string; unknown: string[]; g2p: { phones: string[]; marks: number[]; spans: [number, number][] }; phones: string[]; marks: number[]; words: DictWord[]; aligned: boolean }> {
-    const norm = normalizeOwnText(text, { latin });
+  async analyze(text: string, dict: readonly OwnDictEntry[] = [], latin = true, numbers: NumberReading = 'rule'): Promise<{ norm: string; g2pText: string; unknown: string[]; g2p: { phones: string[]; marks: number[]; spans: [number, number][] }; phones: string[]; marks: number[]; words: DictWord[]; aligned: boolean }> {
+    const norm = normalizeOwnText(text, { latin, amounts: numbersToAmounts(numbers) });
     const d0 = applyOwnDict(norm, dict, latin);
     const d = d0;
     const inp = withEndMark(d.text, this.punct);
@@ -505,7 +508,7 @@ export class WgslOwnTts {
   async speak(text: string, o: OwnSpeakOptions): Promise<OwnSpeakResult> {
     const t0 = performance.now();
     const settings = voiceDictSettings(o.settings, this.meta);
-    const a = await this.analyze(text, o.dict ?? [], o.latin ?? true);
+    const a = await this.analyze(text, o.dict ?? [], o.latin ?? true, o.numbers ?? 'rule');
     const t1 = performance.now();
     const phones = o.labels?.phones ?? a.phones;
     const marks = o.labels?.marks ?? a.marks;

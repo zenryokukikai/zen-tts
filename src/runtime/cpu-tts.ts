@@ -2,7 +2,7 @@
 // decoder (cpu-nsf.ts). The same steps and the same stored weights (int8 / fp16 / f32 as in own.bin); the CPU parts
 // of WgslOwnTts (G2P embedding, argmax, predictor input, prosody, dictionary) are the same shared functions. DOM-free.
 import { emotionNames, type EmotionBlend } from './emotion.js';
-import { normalizeOwnText } from './ja-text-normalize.js';
+import { normalizeOwnText, numbersToAmounts, type NumberReading } from './ja-text-normalize.js';
 import { applySpeedPitch } from './speak-rate.js';
 import {
   applyOwnDict, dictLabels, dropEndMark, withEndMark, dictProsody, frameRows, predictorInput, prosodyFromHead, slotsToPhones, templateParams, voiceDictSettings,
@@ -231,8 +231,8 @@ export class CpuOwnTts {
   }
 
   /** G2P labels of text (normalized, after dictionary L1), as WgslOwnTts.analyze. */
-  analyze(text: string, dict: readonly OwnDictEntry[] = [], latin = true): { norm: string; g2pText: string; unknown: string[]; g2p: { phones: string[]; marks: number[]; spans: [number, number][] }; phones: string[]; marks: number[]; words: DictWord[]; aligned: boolean } {
-    const norm = normalizeOwnText(text, { latin });
+  analyze(text: string, dict: readonly OwnDictEntry[] = [], latin = true, numbers: NumberReading = 'rule'): { norm: string; g2pText: string; unknown: string[]; g2p: { phones: string[]; marks: number[]; spans: [number, number][] }; phones: string[]; marks: number[]; words: DictWord[]; aligned: boolean } {
+    const norm = normalizeOwnText(text, { latin, amounts: numbersToAmounts(numbers) });
     const d0 = applyOwnDict(norm, dict, latin);
     const d = d0;
     const ids: number[] = [];
@@ -248,7 +248,7 @@ export class CpuOwnTts {
   speak(text: string, o: Omit<OwnSpeakOptions, 'stream'>): OwnSpeakResult {
     const t0 = performance.now();
     const settings = voiceDictSettings(o.settings, this.meta);
-    const a = this.analyze(text, o.dict ?? [], o.latin ?? true);
+    const a = this.analyze(text, o.dict ?? [], o.latin ?? true, o.numbers ?? 'rule');
     const t1 = performance.now();
     const phones = o.labels?.phones ?? a.phones;
     const marks = o.labels?.marks ?? a.marks;

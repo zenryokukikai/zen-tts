@@ -171,6 +171,7 @@ showMix();
 strengthEl.addEventListener('input', () => { strengthOut.textContent = `${Number(strengthEl.value).toFixed(1)} 倍`; voiceChanged(); });
 speedEl.addEventListener('input', () => { showSpeed(); voiceChanged(); });
 pitchEl.addEventListener('input', () => { showPitch(); voiceChanged(); });
+document.getElementById('numbers-rule')?.addEventListener('change', voiceChanged);
 $('reset').addEventListener('click', () => {
   sliders.forEach((s, i) => { s.range.value = s.num.value = i === 0 ? '100' : '0'; });
   endSliders.forEach((s, i) => { s.range.value = s.num.value = emotionNames[i] === 'angry' ? '100' : '0'; });

@@ -118,9 +118,169 @@ export function readDigitNumbers(s: string): string {
   });
 }
 
+// Amounts (spec §1.5c): a number with a currency word after it or a 万 / 億 / 兆 unit in it is written in kanji numerals
+// before the G2P (88866円 -> 八万八千八百六十六円, 3億2000万円 -> 三億二千万円, 1万2千円 -> 一万二千円, ¥1,980 -> 千九百八十円):
+// the G2P reads long digit runs badly (ハッピャウ) and kanji numerals well. Runs on text after the separators are dropped
+// and the currency signs moved. Left alone: a decimal (1.5万円), a run touching a letter, a digit or '.' (v2, 1.2.0円),
+// a zero amount (0円: ゼロ), and anything without a currency word or a large unit (dates, times, years, counters).
+const AMOUNT_UNIT = '兆億万千百';
+const CURRENCY_WORD = '(?:円|ドル|ユーロ|ウォン|元|ポンド|セント|ルピー|バーツ|ペソ|フラン)';
+const AMOUNT = new RegExp(`(?<![0-9A-Za-z.]|[0-9A-Za-z]-)(-?)([0-9]+(?:[${AMOUNT_UNIT}][0-9]+)*[${AMOUNT_UNIT}]?)(?![0-9]|\\.[0-9])(?=(${CURRENCY_WORD})?)`, 'g');
+
+/** Amounts in kanji numerals (spec §1.5c). */
+export function readAmounts(s: string): string {
+  return s.replace(AMOUNT, (whole, minus: string, chain: string, currency: string | undefined, at: number, all: string) => {
+    if (currency === undefined && !/[兆億万]/.test(chain)) return whole;
+    // a minus counts only when it is not a hyphen between digits or letters (100-2000円 is a range)
+    if (minus && /[0-9A-Za-z]/.test(all[at - 1] ?? '')) return whole;
+    if (/^0+$/.test(chain)) return whole;
+    if (!LONG_RUN.test(chain)) return whole;
+    const kanji = chain.replace(/[0-9]+/g, (d) => numberToKanji(d));
+    return (minus ? 'マイナス' : '') + kanji;
+  });
+}
+
+// Currency amounts read by rule (spec §1.5c, kana form): a whole number (digits, optionally with 万 / 億 / 兆 / 千 / 百 units)
+// right before 円 / ドル / ユーロ / ウォン / 元 / ポンド becomes its katakana reading with the sound changes (三百 サンビャク,
+// 六百 ロッピャク, 八百 ハッピャク, 三千 サンゼン, 八千 ハッセン, 千万 イッセンマン, 一兆 イッチョウ, 十兆 ジュッチョウ, 4円 ヨエン).
+// The reading of a currency amount does not depend on context, so the rule is exact where the G2P misreads long digit runs.
+// 千円 is センエン. Not touched: decimals (1.5ドル), runs touching a letter, a digit or '.', other counters (人, 日, 分).
+const LONG_RUN = /[0-9]{5}/;
+const KANA_DIGIT = ['', 'イチ', 'ニ', 'サン', 'ヨン', 'ゴ', 'ロク', 'ナナ', 'ハチ', 'キュウ'] as const;
+const KANA_GROUP_UNIT = ['', 'マン', 'オク', 'チョウ'] as const;
+const CURRENCY_KANA: Readonly<Record<string, string>> = { '円': 'エン', 'ドル': 'ドル', 'ユーロ': 'ユーロ', 'ウォン': 'ウォン', '元': 'ゲン', 'ポンド': 'ポンド' };
+const KANJI_UNIT_VALUE: Readonly<Record<string, bigint>> = { '兆': 10n ** 12n, '億': 10n ** 8n, '万': 10n ** 4n, '千': 1000n, '百': 100n };
+const CURRENCY_AMOUNT = /(?<![0-9A-Za-z.]|[0-9A-Za-z]-)(-?)([0-9]+(?:[兆億万千百][0-9]*)*)(円|ドル|ユーロ|ウォン|元(?![\u3400-\u9fff])|ポンド)(?![0-9])/g;
+// the first number of a range of amounts (1,000〜3,000円, 1000から3000円): read like the second, without the currency word
+const AMOUNT_RANGE_HEAD = /(?<![0-9A-Za-z.]|[0-9A-Za-z]-)([0-9]+(?:[兆億万千百][0-9]*)*)(?=\s*(?:[〜~～]|から)\s*[0-9]+(?:[兆億万千百][0-9]*)*(?:円|ドル|ユーロ|ウォン|元|ポンド))/g;
+
+/** 1..9999 in katakana before a group unit (マン, オク, チョウ or none). */
+function kanaGroup(n: number, unit: string): string {
+  const th = Math.floor(n / 1000), hu = Math.floor(n / 100) % 10, te = Math.floor(n / 10) % 10, on = n % 10;
+  let out = '';
+  if (th) out += th === 1 ? (unit !== '' && hu + te + on === 0 ? 'イッセン' : 'セン') : th === 3 ? 'サンゼン' : th === 8 ? 'ハッセン' : KANA_DIGIT[th] + 'セン';
+  if (hu) out += hu === 1 ? 'ヒャク' : hu === 3 ? 'サンビャク' : hu === 6 ? 'ロッピャク' : hu === 8 ? 'ハッピャク' : KANA_DIGIT[hu] + 'ヒャク';
+  const chou = unit === 'チョウ';
+  if (te) out += (te === 1 ? '' : KANA_DIGIT[te]) + (chou && !on ? 'ジュッ' : 'ジュウ');
+  if (on) out += chou && (on === 1 || on === 8) ? (on === 1 ? 'イッ' : 'ハッ') : KANA_DIGIT[on];
+  return out + unit;
+}
+
+/** A whole amount (BigInt, 1 .. < 10^16) in katakana, or null. */
+function amountKana(v: bigint): string | null {
+  if (v <= 0n || v >= 10n ** 16n) return null;
+  const s = v.toString();
+  const groups: number[] = [];
+  for (let e = s.length; e > 0; e -= 4) groups.unshift(Number(s.slice(Math.max(0, e - 4), e)));
+  let out = '';
+  groups.forEach((g, i) => { if (g) out += kanaGroup(g, KANA_GROUP_UNIT[groups.length - 1 - i] ?? ''); });
+  return out;
+}
+
+/** "3億2000万" / "1万2千" / "3千5百万" / "12345" -> its value, or null when the units are out of order. */
+function chainValue(chain: string): bigint | null {
+  let total = 0n, section = 0n, lastBig = 10n ** 16n, lastSmall = 10000n;
+  for (const m of chain.matchAll(/([0-9]*)([兆億万千百]?)/g)) {
+    if (m[0] === '') continue;
+    const digits = m[1] ? BigInt(m[1]) : null;
+    const u = m[2] ? KANJI_UNIT_VALUE[m[2]]! : 1n;
+    if (u >= 10000n) {
+      if (u >= lastBig) return null;
+      const part = section + (digits ?? 0n);
+      total += (part === 0n ? 1n : part) * u;
+      section = 0n; lastBig = u; lastSmall = 10000n;
+    } else if (u > 1n) {
+      if (u >= lastSmall) return null;
+      section += (digits ?? 1n) * u; lastSmall = u;
+    } else {
+      section += digits ?? 0n; lastSmall = 1n;
+    }
+  }
+  return total + section;
+}
+
+/** Currency amounts in katakana (spec §1.5c). */
+export function readCurrencyAmounts(s: string): string {
+  s = s.replace(AMOUNT_RANGE_HEAD, (whole, chain: string, at: number, all: string) => {
+    const tail = /^\s*(?:から)\s*([0-9]+(?:[兆億万千百][0-9]*)*)/.exec(all.slice(at + chain.length));
+    if (!LONG_RUN.test(chain) && !(tail && LONG_RUN.test(tail[1] ?? ''))) return whole;
+    const v = chainValue(chain);
+    return v === null ? whole : (v === 0n ? 'ゼロ' : amountKana(v)) ?? whole;
+  });
+  return s.replace(CURRENCY_AMOUNT, (whole, minus: string, chain: string, cur: string, at: number, all: string) => {
+    if (minus && /[0-9A-Za-z]/.test(all[at - 1] ?? '')) return whole;
+    if (!LONG_RUN.test(chain)) return whole; // up to 4 digits per run: the G2P reads them right, with their accent
+    const v = chainValue(chain);
+    if (v === null) return whole;
+    let k = v === 0n ? 'ゼロ' : amountKana(v);
+    if (k === null) return whole;
+    if (cur === '円' && v % 10n === 4n) k = k.replace(/ヨン$/, 'ヨ'); // 4円 ヨエン, 14円 ジュウヨエン
+    return (minus ? 'マイナス' : '') + k + (CURRENCY_KANA[cur] ?? cur);
+  });
+}
+
+// Long numbers before a unit (spec §1.5c): the G2P reads up to 4 digits before a unit right (sound changes included) but
+// breaks longer runs (88866メートル ハッピャウ). A number of 5 digits or more right before a unit of this table is read by
+// rule: its kana with the unit's sound change on the last element (standard counter patterns). Units where the reading
+// depends on context (日, 月, 人, 分, 時, 年, 階, 軒) are not in the table and stay with the G2P.
+// k: イッ / ロッ / ハッ / ジュッ / ヒャッ before the unit, except the digits listed in keep (read as is: 6歳 ロクサイ, 100点 ヒャクテン);
+// h: like k, and the unit's p / b forms (1本 イッポン, 3本 サンボン, 1000本 センボン, 10000本 イチマンボン).
+type SoundChange = 'none' | 'k' | 'h';
+interface UnitRule { cls: SoundChange; base: string; p?: string; b?: string; keep?: string }
+const UNIT_RULES: Readonly<Record<string, UnitRule>> = {
+  'メートル': { cls: 'none', base: 'メートル' }, 'キロメートル': { cls: 'k', base: 'キロメートル' }, 'キロ': { cls: 'k', base: 'キロ' },
+  'キログラム': { cls: 'k', base: 'キログラム' }, 'センチ': { cls: 'k', base: 'センチ' }, 'センチメートル': { cls: 'k', base: 'センチメートル' },
+  'ミリ': { cls: 'none', base: 'ミリ' }, 'ミリメートル': { cls: 'none', base: 'ミリメートル' }, 'グラム': { cls: 'none', base: 'グラム' },
+  'リットル': { cls: 'none', base: 'リットル' }, 'パーセント': { cls: 'k', base: 'パーセント', keep: '1,6,8,100' }, '度': { cls: 'none', base: 'ド' },
+  '秒': { cls: 'none', base: 'ビョウ' }, 'ページ': { cls: 'k', base: 'ページ' }, '個': { cls: 'k', base: 'コ' }, '回': { cls: 'k', base: 'カイ' },
+  '歳': { cls: 'k', base: 'サイ', keep: '6,100' }, '才': { cls: 'k', base: 'サイ', keep: '6,100' }, '枚': { cls: 'none', base: 'マイ' },
+  '本': { cls: 'h', base: 'ホン', p: 'ポン', b: 'ボン' }, '杯': { cls: 'h', base: 'ハイ', p: 'パイ', b: 'バイ' }, '匹': { cls: 'h', base: 'ヒキ', p: 'ピキ', b: 'ビキ' },
+  '台': { cls: 'none', base: 'ダイ' }, '件': { cls: 'k', base: 'ケン' }, '点': { cls: 'k', base: 'テン', keep: '6,100' }, '位': { cls: 'none', base: 'イ' },
+  '番': { cls: 'none', base: 'バン' },
+};
+const UNIT_ALT = Object.keys(UNIT_RULES).sort((a, b) => b.length - a.length).join('|');
+const LONG_BEFORE_UNIT = new RegExp(`(?<![0-9A-Za-z.]|[0-9A-Za-z]-)([0-9]{5,16})(${UNIT_ALT})(?![0-9])`, 'g');
+
+/** n (5..16 digits) + unit in katakana, the unit's sound change on n's last element. */
+function unitKana(v: bigint, unit: string): string | null {
+  const r = UNIT_RULES[unit];
+  const k = amountKana(v);
+  if (!r || k === null) return null;
+  if (r.cls === 'none') return k + r.base;
+  const keep = new Set((r.keep ?? '').split(','));
+  const p = r.p ?? r.base, b = r.b ?? r.base;
+  const lastTwo = Number(v % 100n), lastThree = Number(v % 1000n);
+  if (/イチ$/.test(k) && !keep.has('1')) return k.slice(0, -2) + 'イッ' + p;
+  if (/ロク$/.test(k) && !keep.has('6')) return k.slice(0, -2) + 'ロッ' + p;
+  if (/ハチ$/.test(k) && !keep.has('8')) return k.slice(0, -2) + 'ハッ' + p;
+  if (/ジュウ$/.test(k) && lastTwo % 10 === 0) return k.slice(0, -3) + 'ジュッ' + p;
+  if (/ャク$/.test(k) && lastThree % 100 === 0 && !keep.has('100')) return k.slice(0, -1) + 'ッ' + p;
+  if (r.cls === 'h' && (/サン$/.test(k) || /[セゼ]ン$|マン$/.test(k))) return k + b;
+  return k + r.base;
+}
+
+/** Numbers of 5 digits or more right before a unit of UNIT_RULES, in katakana (spec §1.5c). */
+export function readLongUnitNumbers(s: string): string {
+  return s.replace(LONG_BEFORE_UNIT, (whole, digits: string, unit: string) => unitKana(BigInt(digits), unit) ?? whole);
+}
+
+/** How long amounts and numbers before a unit (5+ digits) are read: 'rule' (spec §1.5c, the default) or 'model' (the G2P). */
+export type NumberReading = 'rule' | 'model';
+export const NUMBER_READINGS: readonly NumberReading[] = ['rule', 'model'];
+
+/** The speak option `numbers` -> normalizeOwnText's `amounts`. */
+export function numbersToAmounts(n: NumberReading | undefined): 'kana' | false {
+  if (n === undefined || n === 'rule') return 'kana';
+  if (n === 'model') return false;
+  throw new RangeError(`zen-tts: numbers must be 'rule' or 'model' (got ${String(n)})`);
+}
+
 export interface NormalizeOptions {
   /** romaji and short acronyms by rule, English to lower case (spec §3); default true. false: Latin letters as written. */
   latin?: boolean;
+  /** currency amounts and long numbers before a unit (spec §1.5c): 'kana' by rule (readCurrencyAmounts, readLongUnitNumbers),
+   *  'kanji' numerals (readAmounts, comparison only); default off here (the engines pass the speak option `numbers`) */
+  amounts?: 'kana' | 'kanji' | false;
 }
 
 /**
@@ -137,6 +297,8 @@ export function normalizeOwnText(text: string, o: NormalizeOptions = {}): string
   s = s.replace(/([$£¥€])([0-9][0-9.]*)/g, (_m, sign: string, run: string) => run + (CURRENCY_UNIT[sign] ?? ''));
   s = s.replace(/(?<=[0-9])\s*[〜~～]\s*(?=[0-9])/g, 'から');
   s = s.replace(/%/g, 'パーセント');
+  if (o.amounts === 'kanji') s = readAmounts(s);
+  else if (o.amounts === 'kana') s = readLongUnitNumbers(readCurrencyAmounts(s));
   s = s.replace(/(?<=[0-9])\.(?=[0-9])/g, '点');
   s = s.replace(/・・・/g, '...');
   let out = '';

@@ -106,6 +106,16 @@ joined by `、` (a short pause): `0` ゼロ, `1` イチ, `2` ニー, `3` サン,
 - `〒` and 7 digits, with or without a hyphen (`〒1234567`); the `〒` itself is dropped.
 Everything else (`1234`, `88866円`, `1-2-3`, `10-20`, `1.2.0`) is left to the model.
 
+### 1.5c Long amounts and numbers before a unit (read by rule, since 1.3.0)
+Speak option `numbers` (`'rule'`, the default, or `'model'`; also a load option). With `'rule'`, after §1.2-1.3 and before the
+decimal point step, katakana by rule (`readCurrencyAmounts`, `readLongUnitNumbers` in `src/runtime/ja-text-normalize.ts`):
+- a currency amount (円, ドル, ユーロ, ウォン, 元, ポンド) with a run of 5 or more digits, alone or in a 万 / 億 / 兆 chain, and both
+  ends of a range of such amounts (`88866円` → ハチマンハッセンハッピャクロクジュウロクエン, `10,000〜30,000円` → イチマンからサンマンエン);
+- a run of 5 or more digits right before a unit of the table (メートル, キロ, グラム, パーセント, 本, 杯, 匹, 個, 回, 歳, ... with the
+  counter sound changes: `43776キロ` → …ナナジュウロッキロ, `12341本` → …ヨンジュウイッポン).
+Runs of up to 4 digits, decimals, ranges with a hyphen and the counters whose reading depends on the context (日, 月, 人, 分,
+時, 年, 階, 軒) are left to the model. `'model'` leaves all numbers to the model (as 1.2.x).
+
 ### 1.6 Character classes
 After the numbers, map the following characters, then delete every character that is not allowed (digits `0`-`9` are allowed).
 

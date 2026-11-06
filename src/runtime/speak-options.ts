@@ -1,5 +1,6 @@
 // The public speak() options -> the engine's options, and the text -> sentences split used by speakStream(). Shared by
 // the browser entry (index.ts) and the Node entry (node/index.ts). DOM-free.
+import { numbersToAmounts, type NumberReading } from './ja-text-normalize.js';
 import { blendFrom, emotionNames, neutralBlend, type EmotionBlend, type EmotionName } from './emotion.js';
 import { ttsDemoCurveBlend, type TtsDemoCurve } from './emotion-curve.js';
 import type { OwnSpeakOptions } from './tts-own-device.js';
@@ -32,6 +33,9 @@ export interface SpeakOptions {
   /** Romaji and short acronyms by rule (arigatou → ありがとう, SDK → エスディーケー; English words go to the G2P in lower case);
    *  default true. false: Latin letters go to the G2P as written. */
   latin?: boolean;
+  /** Long amounts and numbers before a unit (5+ digits, e.g. 88866円, 12,345,678円, 88866メートル): 'rule' reads them by rule
+   *  (the default, or the load option), 'model' leaves them to the reading model. */
+  numbers?: NumberReading;
   /** Speaking rate: 1 = as the model predicts, 1.5 = 1.5 times as fast (all durations / speed, pauses included).
    *  0.5..1.5 (outside: RangeError). */
   speed?: number;
@@ -47,6 +51,7 @@ export function engineOptionsOf(o: SpeakOptions): OwnSpeakOptions {
   if (o.dict) opts.dict = o.dict;
   if (o.settings) opts.settings = o.settings;
   if (o.latin !== undefined) opts.latin = o.latin;
+  if (o.numbers !== undefined) { numbersToAmounts(o.numbers); opts.numbers = o.numbers; }
   checkSpeedPitch(o.speed, o.pitch);
   if (o.speed !== undefined) opts.speed = o.speed;
   if (o.pitch !== undefined) opts.pitch = o.pitch;

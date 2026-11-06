@@ -1,6 +1,6 @@
 // The demo's TTS (shared by 「話す」 and the intonation panel), the sentence split, and the dictionary kept in this
 // browser only (localStorage). Nothing is sent anywhere: the model files (the voice's .ztm from the CDN, the G2P) are the only downloads.
-import { ZenTts, ztmUrl, type Backend, type DictEntry, type EngineSpeakOptions, type SpeakResult, type VoiceId } from '../index.js';
+import { ZenTts, ztmUrl, type Backend, type DictEntry, type EngineSpeakOptions, type NumberReading, type SpeakResult, type VoiceId } from '../index.js';
 import { BROWSER_DICT_STORAGE_KEY, BrowserDictError, dictFile, parseDictFile } from './dictionary.js';
 
 /** iOS Safari (16.4+): the page's voice as media playback. Left at 'auto', a page that only uses Web Audio plays in the
@@ -41,6 +41,12 @@ export function loadEngine(backend: Backend): Promise<ZenTts> {
   return engine;
 }
 
+/** 「長い数字を決まりで読む」 (the speak option numbers): checked = 'rule', the runtime's default. */
+export function pageNumbers(): NumberReading {
+  const el = document.getElementById('numbers-rule') as HTMLInputElement | null;
+  return el && !el.checked ? 'model' : 'rule';
+}
+
 let queue: Promise<unknown> = Promise.resolve();
 /** One utterance after another (the engine's buffers are shared). The dictionary is this browser's; over: one entry put
  *  over it for this run only (a 読み being tried in the intonation panel). */
@@ -48,7 +54,7 @@ export function speakQueued(backend: Backend, text: string, o: Omit<EngineSpeakO
   const r = queue.then(async () => {
     const t = await loadEngine(backend);
     const dict = browserDict();
-    return t.speakWith(text, { ...o, dict: over ? [...dict.filter((x) => x.surface !== over.surface), over] : dict });
+    return t.speakWith(text, { numbers: pageNumbers(), ...o, dict: over ? [...dict.filter((x) => x.surface !== over.surface), over] : dict });
   });
   queue = r.catch(() => undefined);
   return r;

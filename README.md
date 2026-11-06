@@ -2,7 +2,7 @@
 
 日本語のニューラル音声合成（TTS）。5 つの感情スタイルを連続値で混合し、文中で時間的に遷移させられます。G2P からデコーダまでブラウザ内（WebGPU / WASM SIMD）と Node.js（CPU）で動作します。
 
-バージョン 1.2.2。4 voices（voice ごとに独立したモデル。G2P は共通）。voice のモデルは 1 ファイル（`.ztm`）で CDN から配布します（「モデルファイル」）。
+バージョン 1.3.0。4 voices（voice ごとに独立したモデル。G2P は共通）。voice のモデルは 1 ファイル（`.ztm`）で CDN から配布します（「モデルファイル」）。
 
 | voice | id | model | 特徴 |
 |---|---|---|---|
@@ -38,15 +38,15 @@ npm レジストリには公開していません。GitHub から指定します
 
 ```sh
 # npm
-npm i github:zenryokukikai/zen-tts#v1.2.2
+npm i github:zenryokukikai/zen-tts#v1.3.0
 # pnpm
-pnpm add github:zenryokukikai/zen-tts#v1.2.2
+pnpm add github:zenryokukikai/zen-tts#v1.3.0
 # yarn
-yarn add github:zenryokukikai/zen-tts#v1.2.2
+yarn add github:zenryokukikai/zen-tts#v1.3.0
 ```
 
 - Node.js 26.12.1（`.mise.toml` で固定、`mise install`）。開発は pnpm。
-- `#v1.2.2` はタグまたはコミットハッシュで固定してください。
+- `#v1.3.0` はタグまたはコミットハッシュで固定してください。
 - voice の重み（`.ztm`）はリポジトリに含まれません。CDN から読み込むか、ダウンロードして自分のサーバーに置きます（「モデルファイル」）。G2P（`models/g2p/`）はリポジトリに同梱。
 
 ## デモ
@@ -103,7 +103,7 @@ await tts.speak('落ち着いて聞いてください。もう我慢できませ
 - `speed`・`pitch`：下の「速さと高さ」を参照。`speakStream` でも同じ。
 - `speakWith(text, { blend, labels, f0Add, durScale, speed, pitch })`：音単位の F0 加算・長さ倍率・アクセントラベル、文全体の速さ・高さを与えて合成（デモのイントネーション編集が使用）。
 - 感情名：`neutral`、`happy`、`sad`、`angry`、`apologetic`。
-- export：`VERSION`（`'1.2.2'`）、`VOICE`（既定 `'marine'`）、`VOICES`、`ztmUrl(id)`（その voice の CDN の URL）、`ZTM_BASE_URL`、`SPEED_MIN`・`SPEED_MAX`・`PITCH_MIN`・`PITCH_MAX`（速さと高さの範囲）。`tts.voice` は使用中の voice id。
+- export：`VERSION`（`'1.3.0'`）、`VOICE`（既定 `'marine'`）、`VOICES`、`ztmUrl(id)`（その voice の CDN の URL）、`ZTM_BASE_URL`、`SPEED_MIN`・`SPEED_MAX`・`PITCH_MIN`・`PITCH_MAX`（速さと高さの範囲）。`tts.voice` は使用中の voice id。
 - `EMOTION_CURVES`：`ease`、`linear`、`fast-start`、`late-surge`、`switch`、`steps`、`hill`、`valley`、`wave`。
 
 ## 速さと高さ
@@ -114,6 +114,7 @@ await tts.speak('落ち着いて聞いてください。もう我慢できませ
 |---|---|---|
 | `speed` | 話す速さの倍率。音の長さ（句読点の間も含む）を `speed` で割る。声の高さは変わらない | 0.5〜1.5（`SPEED_MIN`・`SPEED_MAX`） |
 | `pitch` | 文全体に足す高さ（半音）。長さは変わらない | −6〜+12（`PITCH_MIN`・`PITCH_MAX`） |
+| `numbers` | 長い金額・単位の前の 5 けた以上の数字の読み方。`'rule'`（規則、既定）か `'model'`（読みのモデル）。`load()` でも指定できます | `'rule'`・`'model'` |
 
 - 適用する順番：モデルの予測 → 辞書（`pitch`・`length` など）→ `f0Add`・`durScale` → `speed`・`pitch`。辞書や感情の配合・遷移と一緒に使えます。
 - 長さは 1 コマ（512 サンプル、約 11.6 ms）単位です。音ごとに割ったあと、合計が「元の合計 ÷ speed」から 1 コマ以上ずれないように丸め、どの音も 1 コマ以上残します。
@@ -217,24 +218,25 @@ for await (const c of tts.speakStream('こんにちは。全力マリンです�
 
 ## 読み
 
-- **数字**：数字のまま読みのモデルに渡し、モデルが読みます（`10分` ジュップン、`十分` ジュウブン、`3分の2` サンブンノニ、`2026年11月5日`）。前処理は、桁区切りのカンマを外す（`1,280` → `1280`）、通貨記号を後ろの語にする（`$5` → `5ドル`）、数字の間の `〜` を「から」、`%` を「パーセント」、数字の間の `.` を「点」にすることだけです。
+- **数字**：数字のまま読みのモデルに渡し、モデルが読みます（`10分` ジュップン、`十分` ジュウブン、`3分の2` サンブンノニ、`2026年11月5日`）。前処理は、桁区切りのカンマを外す（`1,280` → `1280`）、通貨記号を後ろの語にする（`$5` → `5ドル`）、数字の間の `〜` を「から」、`%` を「パーセント」、数字の間の `.` を「点」にすることと、下の「長い数字」です。
 - **英単語**：小文字にして読みのモデルに渡し、モデルが読みます（`Unity` ユニティ）。モデルが学んでいない語は、うまく読めないことがあります。そのときはユーザー辞書に登録してください。
 - **ローマ字**：日本語のローマ字（ヘボン式・訓令式、`sushi` すし、`arigatou` ありがとう）は規則でひらがなにします。ローマ字としても読める英単語（`game`、`nose`、`again`）は英単語として扱います（`src/runtime/latin-words.ts` の除外リスト）。
 - **略語**：大文字だけで 3 文字までの語は、アルファベットの名前で読みます（`SDK` エスディーケー、`PDF` ピーディーエフ）。
 - URL・メールアドレス・ファイル名は書いたまま渡します。
 - `speak(text, { latin: false })` で、ローマ字と略語の規則を止められます（英字はそのまま読みのモデルに渡ります）。
+- **長い数字**：長い金額（`88866円`、`12,345,678円`）と、単位の前の 5 けた以上の数字（`88866メートル`）は規則で読みます。`numbers: 'model'` で読みのモデルに任せます（`load()` で既定を、`speak()` で 1 回ごとに指定）。
 - くわしくは [docs/SPEC-text-frontend.md](docs/SPEC-text-frontend.md)。
 
 ## モデルファイル
 
-voice の重みは 1 voice 1 ファイル（`.ztm`、形式は [docs/ztm-format.md](docs/ztm-format.md)）で CDN から配布します。リポジトリには含みません。1.2.2 では marine を更新しました。ほかの 3 voices は 1.2.0 と同じファイルです。
+voice の重みは 1 voice 1 ファイル（`.ztm`、形式は [docs/ztm-format.md](docs/ztm-format.md)）で CDN から配布します。リポジトリには含みません。1.3.0 の声は 1.2.2 と同じです（新しい読みのモデルに合わせてファイルを作り直しています）。
 
 | voice | URL | サイズ | sha256 |
 |---|---|---|---|
-| `marine` | https://tts-models.zenryoku.work/v1.2.2/marine.ztm | 27.7 MB | `a6c4f7fe47d485c409b5aaa685b0b92fd86ae4524efbe9de43e9d430c0c40a13` |
-| `hashiro` | https://tts-models.zenryoku.work/v1.2.2/hashiro.ztm | 27.7 MB | `6b85821342690767c0156a3f2c390f05589ae91291c24cca545880f8d2c5b348` |
-| `kai` | https://tts-models.zenryoku.work/v1.2.2/kai.ztm | 27.7 MB | `c6f741f7269736de3abb063215f1f9a032aa5fc06a4e576f38accb407b04fdc4` |
-| `kikka` | https://tts-models.zenryoku.work/v1.2.2/kikka.ztm | 27.7 MB | `277cbd80a4fbff93988ff3b382fc29c8de98749a2c1cb1a8d6e0cc9e2fc869c8` |
+| `marine` | https://tts-models.zenryoku.work/v1.3.0/marine.ztm | 27.7 MB | `c7bdad381540d33f90aa60b255520051b04d6ce84c66e0fbc8d8ed3cdec3a4dd` |
+| `hashiro` | https://tts-models.zenryoku.work/v1.3.0/hashiro.ztm | 27.7 MB | `17d8f69ae8c45c3390ca06f15f30b7bc15c8be74d76c35ca0b9fe30851895433` |
+| `kai` | https://tts-models.zenryoku.work/v1.3.0/kai.ztm | 27.7 MB | `1c9bbd2113900262b8f74dfcfafe2e61fd3a7cf184b91d76edcd96dd4ff6444a` |
+| `kikka` | https://tts-models.zenryoku.work/v1.3.0/kikka.ztm | 27.7 MB | `81f3068e883f83ac5c0e7a84b6e0b06ca6ef1f0de05e7a136d94bed18845437b` |
 
 - `ztmUrl(id)` が上の URL を返します。CORS は全オリジン許可、`Cache-Control: immutable`（版ごとにパスを分けるため）。
 - 自分のサーバーに置く場合：上の URL からダウンロードし、`model` にその URL（ブラウザ）またはパス（Node）を指定します。

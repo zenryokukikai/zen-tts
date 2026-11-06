@@ -15,6 +15,7 @@ import type { NativeKernels } from '../runtime/cpu-kernels.js';
 import type { OwnMeta } from '../runtime/tts-own-prosody.js';
 import type { OwnSpeakOptions, OwnSpeakResult } from '../runtime/tts-own-device.js';
 import { withBuiltinDict } from '../runtime/builtin-dict.js';
+import { numbersToAmounts, type NumberReading } from '../runtime/ja-text-normalize.js';
 import { curveFn, curvePoints, engineOptionsOf, splitSentences, type SpeakOptions } from '../runtime/speak-options.js';
 import { nodeApis, type NodeApis } from './node-api.js';
 import { g2pMismatch, ownFromZtm, parseZtm, vocoderFromZtm, type G2pMeta, type ZtmHeader } from '../runtime/ztm.js';
@@ -22,6 +23,7 @@ import { g2pMismatch, ownFromZtm, parseZtm, vocoderFromZtm, type G2pMeta, type Z
 export { emotionNames, neutralBlend, type EmotionBlend, type EmotionName } from '../runtime/emotion.js';
 export { emotionBlend, splitSentences, type EmotionAmounts, type SpeakOptions } from '../runtime/speak-options.js';
 export { SPEED_MIN, SPEED_MAX, PITCH_MIN, PITCH_MAX } from '../runtime/speak-rate.js';
+export { NUMBER_READINGS, type NumberReading } from '../runtime/ja-text-normalize.js';
 import { streamMaxChars } from '../runtime/speak-rate.js';
 export { TTS_DEMO_CURVES as EMOTION_CURVES, type TtsDemoCurve as EmotionCurve } from '../runtime/emotion-curve.js';
 export type { OwnDictEntry as DictEntry, OwnDictSettings as DictSettings } from '../runtime/tts-own-prosody.js';
@@ -53,6 +55,8 @@ export interface NodeLoadOptions {
   kernel?: Exclude<TtsKernel, 'wasm'>;
   /** Directory with the native builds zen_tts_<kernel>.node (default: native/x86/build of the package; also ZEN_TTS_NATIVE_DIR). */
   nativeDir?: string;
+  /** Default of the speak option `numbers`: 'rule' (default) or 'model'. A speak() / analyze() option overrides it. */
+  numbers?: NumberReading;
 }
 
 /** speak()'s result: the audio and what the model read. */
@@ -116,9 +120,13 @@ async function download(url: string): Promise<ArrayBuffer> {
 const buf = (b: Uint8Array): ArrayBuffer => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
 
 export class ZenTtsNode {
+  /** How long amounts and numbers before a unit are read when a call does not say (NodeLoadOptions.numbers). */
+  numbers: NumberReading = 'rule';
+
   private constructor(private readonly tts: CpuOwnTts, readonly kernel: TtsKernel, readonly voice: string, readonly header?: ZtmHeader) {}
 
   static async load(o: NodeLoadOptions = {}): Promise<ZenTtsNode> {
+    numbersToAmounts(o.numbers);
     const n = await nodeApis();
     const models = n.path.resolve(o.modelsPath ?? 'models');
     const read = (p: string, what: string): Uint8Array => {
@@ -154,12 +162,14 @@ export class ZenTtsNode {
       const r = loadNative(n, o);
       if ('addon' in r) { tts.k.useNative(r.addon); kernel = r.kernel; } else if (want === 'native') throw new Error(`zen-tts/node: ${r.error}`);
     }
-    return new ZenTtsNode(tts, kernel, voice, header);
+    const t = new ZenTtsNode(tts, kernel, voice, header);
+    if (o.numbers !== undefined) t.numbers = o.numbers;
+    return t;
   }
 
   /** One sentence (up to about 11 s of speech) to 44.1 kHz mono audio. Synchronous work on this thread. */
   async speak(text: string, o: SpeakOptions = {}): Promise<NodeSpeakResult> {
-    return this.speakWith(text, engineOptionsOf(o));
+    return this.speakWith(text, engineOptionsOf({ numbers: this.numbers, ...o }));
   }
 
   /** speak() with the engine's options as they are (blend / blendAt, labels, f0Add, durScale). */
@@ -168,7 +178,7 @@ export class ZenTtsNode {
     const { blendAt, stream: _s, ...rest } = o;
     // a blendAt curve is sampled at the same points as on the browser's CPU path, so the audio matches it
     const opts = blendAt ? { ...rest, blendAt: curveFn(curvePoints(blendAt)) } : rest;
-    const r = this.tts.speak(text, { ...opts, dict: withBuiltinDict(o.dict) });
+    const r = this.tts.speak(text, { numbers: this.numbers, ...opts, dict: withBuiltinDict(o.dict) });
     return { ...r, pcm: r.audio, sampleRate: SAMPLE_RATE };
   }
 
@@ -177,7 +187,7 @@ export class ZenTtsNode {
    * can be played, streamed or lip-synced while the next one is synthesised.
    */
   async *speakStream(text: string, o: SpeakOptions = {}): AsyncGenerator<NodeSpeechChunk> {
-    const opts = engineOptionsOf(o);
+    const opts = engineOptionsOf({ numbers: this.numbers, ...o });
     let index = 0;
     for (const sentence of splitSentences(text, streamMaxChars(o.speed))) {
       const r = await this.speakWith(sentence, opts);
@@ -188,8 +198,10 @@ export class ZenTtsNode {
   }
 
   /** Readings and accent marks the model would use (after the dictionary). */
-  analyze(text: string, dict: Parameters<CpuOwnTts['analyze']>[1] = []): ReturnType<CpuOwnTts['analyze']> {
-    return this.tts.analyze(text, withBuiltinDict(dict));
+  analyze(text: string, dict: Parameters<CpuOwnTts['analyze']>[1] = [], o: { numbers?: NumberReading } = {}): ReturnType<CpuOwnTts['analyze']> {
+    const numbers = o.numbers ?? this.numbers;
+    numbersToAmounts(numbers);
+    return this.tts.analyze(text, withBuiltinDict(dict), true, numbers);
   }
 
   /** Bytes of the kernels' memory (weights + work). */

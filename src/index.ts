@@ -13,6 +13,7 @@ import { engineOptionsOf, splitSentences, type SpeakOptions } from './runtime/sp
 import type { OwnDictEntry, OwnDictSettings, OwnMeta } from './runtime/tts-own-prosody.js';
 import { withBuiltinDict } from './runtime/builtin-dict.js';
 import { modelFetch } from './runtime/model-fetch.js';
+import { numbersToAmounts, type NumberReading } from './runtime/ja-text-normalize.js';
 import { nsfExportToWeights } from './runtime/nsf-weights.js';
 import { g2pMismatch, ownFromZtm, parseZtm, vocoderFromZtm, type G2pMeta, type ZtmHeader } from './runtime/ztm.js';
 
@@ -31,6 +32,7 @@ import { voiceDirs, type VoiceId } from './version.js';
 
 export { emotionBlend, splitSentences, type EmotionAmounts, type SpeakOptions } from './runtime/speak-options.js';
 export { SPEED_MIN, SPEED_MAX, PITCH_MIN, PITCH_MAX } from './runtime/speak-rate.js';
+export { NUMBER_READINGS, type NumberReading } from './runtime/ja-text-normalize.js';
 import { streamMaxChars } from './runtime/speak-rate.js';
 
 /** Where the voice is made: 'webgpu', 'cpu' (WebAssembly SIMD), or 'auto' (WebGPU if available, else CPU). */
@@ -51,13 +53,15 @@ export interface LoadOptions {
   cpuWasmUrl?: string;
   /** An existing GPUDevice to share (WebGPU backend); otherwise one is requested. */
   device?: unknown;
+  /** Default of the speak option `numbers`: 'rule' (default) or 'model'. A speak() / analyze() option overrides it. */
+  numbers?: NumberReading;
 }
 
 /** The engine under ZenTts: WgslOwnTts (WebGPU) or CpuTts (CPU worker); the same options and results. */
 interface Engine {
   readonly meta: OwnMeta;
   speak(text: string, o: OwnSpeakOptions): Promise<OwnSpeakResult>;
-  analyze(text: string, dict?: readonly OwnDictEntry[]): Promise<Awaited<ReturnType<WgslOwnTts['analyze']>>>;
+  analyze(text: string, dict?: readonly OwnDictEntry[], latin?: boolean, numbers?: NumberReading): Promise<Awaited<ReturnType<WgslOwnTts['analyze']>>>;
   destroy(): void;
 }
 
@@ -70,9 +74,19 @@ async function webgpuDevice(): Promise<unknown | undefined> {
 }
 
 export class ZenTts {
+  /** How long amounts and numbers before a unit are read when a call does not say (LoadOptions.numbers). */
+  numbers: NumberReading = 'rule';
+
   private constructor(readonly engine: Engine, readonly backend: 'webgpu' | 'cpu', readonly voice: string, readonly header?: ZtmHeader) {}
 
   static async load(o: LoadOptions = {}): Promise<ZenTts> {
+    numbersToAmounts(o.numbers);
+    const t = await ZenTts.loadEngine(o);
+    if (o.numbers !== undefined) t.numbers = o.numbers;
+    return t;
+  }
+
+  private static async loadEngine(o: LoadOptions): Promise<ZenTts> {
     if (o.model !== undefined) return ZenTts.loadZtm(o.model, o);
     const want = o.backend ?? 'auto';
     const modelsUrl = o.modelsUrl ?? './models';
@@ -117,7 +131,7 @@ export class ZenTts {
 
   /** One sentence (up to about 11 s of speech) to 44.1 kHz mono audio. */
   async speak(text: string, o: SpeakOptions = {}): Promise<OwnSpeakResult & { sampleRate: number }> {
-    return this.speakWith(text, engineOptionsOf(o));
+    return this.speakWith(text, engineOptionsOf({ numbers: this.numbers, ...o }));
   }
 
   /**
@@ -125,7 +139,7 @@ export class ZenTts {
    * for playing (or lip-syncing) while the next is synthesised. Same options as speak().
    */
   async *speakStream(text: string, o: SpeakOptions = {}): AsyncGenerator<SpeechChunk> {
-    const opts = engineOptionsOf(o);
+    const opts = engineOptionsOf({ numbers: this.numbers, ...o });
     let index = 0;
     for (const sentence of splitSentences(text, streamMaxChars(o.speed))) {
       const r = await this.speakWith(sentence, opts);
@@ -137,13 +151,15 @@ export class ZenTts {
    *  (labels: accent marks, f0Add: semitones per phone, durScale: length per phone). */
   async speakWith(text: string, o: OwnSpeakOptions): Promise<OwnSpeakResult & { sampleRate: number }> {
     if (o.stream) throw new Error('stream is not supported here');
-    const r = await this.engine.speak(text, { ...o, dict: withBuiltinDict(o.dict) });
+    const r = await this.engine.speak(text, { numbers: this.numbers, ...o, dict: withBuiltinDict(o.dict) });
     return { ...r, sampleRate: SAMPLE_RATE };
   }
 
   /** Readings and accent marks the model would use (after the dictionary), for checking / editing. */
-  analyze(text: string, dict: readonly OwnDictEntry[] = []): ReturnType<Engine['analyze']> {
-    return this.engine.analyze(text, withBuiltinDict(dict));
+  analyze(text: string, dict: readonly OwnDictEntry[] = [], o: { numbers?: NumberReading } = {}): ReturnType<Engine['analyze']> {
+    const numbers = o.numbers ?? this.numbers;
+    numbersToAmounts(numbers);
+    return this.engine.analyze(text, withBuiltinDict(dict), true, numbers);
   }
 
   destroy(): void { this.engine.destroy(); }

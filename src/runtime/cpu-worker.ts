@@ -19,7 +19,7 @@ scope.onmessage = (e) => {
         return;
       }
       if (!tts) throw new Error('cpu tts not loaded');
-      if (m.type === 'analyze') { scope.postMessage({ type: 'analyzed', id: m.id, result: tts.analyze(m.text, m.dict) }); return; }
+      if (m.type === 'analyze') { scope.postMessage({ type: 'analyzed', id: m.id, result: tts.analyze(m.text, m.dict, true, m.numbers ?? 'rule') }); return; }
       // blendAt (a function) cannot cross to the worker: it comes as its values at 129 points and is read back linearly
       const { curve, ...o } = m.options;
       const blendAt = curve ? curveFn(curve) : undefined;

@@ -5,6 +5,7 @@ import { modelFetch } from './model-fetch.js';
 import { curvePoints } from './speak-options.js';
 import type { OwnSpeakOptions, OwnSpeakResult } from './tts-own-device.js';
 import type { DictWord, OwnDictEntry, OwnMeta } from './tts-own-prosody.js';
+import type { NumberReading } from './ja-text-normalize.js';
 
 
 export type CpuSpeakOptions = Omit<OwnSpeakOptions, 'stream' | 'blendAt'> & { curve?: EmotionBlend[] };
@@ -12,7 +13,7 @@ export type CpuAnalysis = { norm: string; g2pText: string; unknown: string[]; g2
 export type CpuRequest =
   | { type: 'load'; id: number; wasm: ArrayBuffer; meta: unknown; bin: ArrayBuffer; nsfMeta: unknown; nsfBin: ArrayBuffer }
   | { type: 'speak'; id: number; text: string; options: CpuSpeakOptions }
-  | { type: 'analyze'; id: number; text: string; dict: OwnDictEntry[] };
+  | { type: 'analyze'; id: number; text: string; dict: OwnDictEntry[]; numbers?: NumberReading };
 export type CpuReply =
   | { type: 'ready'; id: number }
   | { type: 'spoken'; id: number; result: OwnSpeakResult }
@@ -71,8 +72,8 @@ export class CpuTts {
     return r.result;
   }
 
-  async analyze(text: string, dict: readonly OwnDictEntry[] = []): Promise<CpuAnalysis> {
-    const r = await this.ask({ type: 'analyze', id: ++this.seq, text, dict: [...dict] });
+  async analyze(text: string, dict: readonly OwnDictEntry[] = [], _latin = true, numbers?: NumberReading): Promise<CpuAnalysis> {
+    const r = await this.ask({ type: 'analyze', id: ++this.seq, text, dict: [...dict], ...(numbers ? { numbers } : {}) });
     if (r.type !== 'analyzed') throw new Error('cpu tts: unexpected reply');
     return r.result;
   }
