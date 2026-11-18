@@ -1,6 +1,6 @@
 {
   "name": "zen-tts",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
   "description": "ZEN-TTS: Japanese text-to-speech whose style (emotion) can be controlled as a gradation: in the browser (WebGPU or CPU via WebAssembly) and on Node.js (CPU)",
   "license": "SEE LICENSE IN LICENSE.md",
@@ -13,7 +13,7 @@
     "build:wasm": "node scripts/build-cpu-wasm.mjs",
     "check": "node scripts/demo-check.mjs",
     "prepare": "tsc -p tsconfig.json",
-    "build:native": "sh native/x86/build-all.sh",
+    "build:native": "case $(uname -m) in arm64|aarch64) sh native/arm64/build.sh;; *) sh native/x86/build-all.sh;; esac",
     "test": "tsc -p tsconfig.json && node --test test/*.test.mjs"
   },
   "devDependencies": {
@@ -49,6 +49,9 @@
     "native/x86/*.c",
     "native/x86/*.h",
     "native/x86/*.sh",
+    "native/arm64/*.c",
+    "native/arm64/*.h",
+    "native/arm64/*.sh",
     "LICENSE.md",
     "THIRD_PARTY_NOTICES.md",
     "README.md"

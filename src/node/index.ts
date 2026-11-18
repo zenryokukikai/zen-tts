@@ -34,8 +34,8 @@ export { VERSION, VOICE, VOICES, ZTM_BASE_URL, voiceDirs, ztmUrl, type VoiceId }
 export { parseZtm, type ZtmHeader } from '../runtime/ztm.js';
 import { voiceDirs, type VoiceId } from '../version.js';
 
-/** The kernel build in use: a native x86-64 build, or the WebAssembly SIMD build. */
-export type TtsKernel = 'avx512' | 'avx2' | 'sse41' | 'wasm';
+/** The kernel build in use: a native build (x86-64: avx512 / avx2 / sse41; arm64: neon), or the WebAssembly SIMD build. */
+export type TtsKernel = 'avx512' | 'avx2' | 'sse41' | 'neon' | 'wasm';
 /** 'auto' (default): the best native build this CPU runs, else wasm; 'native': a native build or an error; 'wasm'. */
 export type NodeTtsBackend = 'auto' | 'native' | 'wasm';
 
@@ -51,9 +51,9 @@ export interface NodeLoadOptions {
   model?: string;
   /** default 'auto' */
   backend?: NodeTtsBackend;
-  /** Force one native build: 'avx512' | 'avx2' | 'sse41' (also ZEN_TTS_KERNEL). */
+  /** Force one native build: 'avx512' | 'avx2' | 'sse41' on x86-64, 'neon' on arm64 (also ZEN_TTS_KERNEL). */
   kernel?: Exclude<TtsKernel, 'wasm'>;
-  /** Directory with the native builds zen_tts_<kernel>.node (default: native/x86/build of the package; also ZEN_TTS_NATIVE_DIR). */
+  /** Directory with the native builds zen_tts_<kernel>.node (default: native/x86/build or native/arm64/build of the package; also ZEN_TTS_NATIVE_DIR). */
   nativeDir?: string;
   /** Default of the speak option `numbers`: 'rule' (default) or 'model'. A speak() / analyze() option overrides it. */
   numbers?: NumberReading;
@@ -75,7 +75,12 @@ export interface NodeSpeechChunk {
   timing: OwnSpeakResult['timing'];
 }
 
-const BUILDS: Exclude<TtsKernel, 'wasm'>[] = ['avx512', 'avx2', 'sse41'];
+type NativeKernel = Exclude<TtsKernel, 'wasm'>;
+/** The native builds for each CPU architecture, best first, and the directory of the package they are built into. */
+const NATIVE: Partial<Record<string, { dir: string; builds: NativeKernel[] }>> = {
+  x64: { dir: 'x86', builds: ['avx512', 'avx2', 'sse41'] },
+  arm64: { dir: 'arm64', builds: ['neon'] },
+};
 
 /** CPU features a native build needs (from /proc/cpuinfo on Linux; empty elsewhere). */
 function cpuFlags(n: NodeApis): Set<string> {
@@ -86,22 +91,27 @@ function cpuFlags(n: NodeApis): Set<string> {
     return new Set((line?.split(':')[1] ?? '').trim().split(/\s+/));
   } catch { return new Set(); }
 }
-const NEEDS: Record<Exclude<TtsKernel, 'wasm'>, string[]> = { avx512: ['avx512f'], avx2: ['avx2'], sse41: ['sse4_1'] };
+/** CPU features (cpuFlags, Linux) a native build needs; NEON is part of every arm64 CPU. */
+const NEEDS: Record<NativeKernel, string[]> = { avx512: ['avx512f'], avx2: ['avx2'], sse41: ['sse4_1'], neon: [] };
 
 /** The package root (two levels above dist/node/). */
 function packageRoot(n: NodeApis): string {
   return n.path.resolve(n.path.dirname(n.url.fileURLToPath(import.meta.url)), '..', '..');
 }
 
-function loadNative(n: NodeApis, o: NodeLoadOptions): { addon: NativeKernels; kernel: Exclude<TtsKernel, 'wasm'> } | { error: string } {
-  if (n.process.platform !== 'linux' || n.process.arch !== 'x64') return { error: `no native build for ${n.process.platform}-${n.process.arch}` };
-  const dir = o.nativeDir ?? n.process.env['ZEN_TTS_NATIVE_DIR'] ?? n.path.join(packageRoot(n), 'native', 'x86', 'build');
-  const forced = (o.kernel ?? n.process.env['ZEN_TTS_KERNEL']) as Exclude<TtsKernel, 'wasm'> | undefined;
-  if (forced && !BUILDS.includes(forced)) return { error: `kernel must be ${BUILDS.join(', ')}` };
+function loadNative(n: NodeApis, o: NodeLoadOptions): { addon: NativeKernels; kernel: NativeKernel } | { error: string } {
+  const arch = NATIVE[n.process.arch];
+  // x86-64 builds: Linux; arm64 builds: macOS and Linux
+  if (!arch || (n.process.arch === 'x64' ? n.process.platform !== 'linux' : !['darwin', 'linux'].includes(n.process.platform))) {
+    return { error: `no native build for ${n.process.platform}-${n.process.arch}` };
+  }
+  const dir = o.nativeDir ?? n.process.env['ZEN_TTS_NATIVE_DIR'] ?? n.path.join(packageRoot(n), 'native', arch.dir, 'build');
+  const forced = (o.kernel ?? n.process.env['ZEN_TTS_KERNEL']) as NativeKernel | undefined;
+  if (forced && !arch.builds.includes(forced)) return { error: `kernel must be ${arch.builds.join(', ')}` };
   const flags = cpuFlags(n);
   const req = n.module.createRequire(import.meta.url);
   const tried: string[] = [];
-  for (const k of forced ? [forced] : BUILDS) {
+  for (const k of forced ? [forced] : arch.builds) {
     if (!NEEDS[k].every((f) => flags.has(f))) { tried.push(`${k}: CPU lacks ${NEEDS[k].join('+')}`); continue; }
     const p = n.path.join(dir, `zen_tts_${k}.node`);
     if (!n.fs.existsSync(p)) { tried.push(`${k}: ${p} not built`); continue; }

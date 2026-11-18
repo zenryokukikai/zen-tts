@@ -62,11 +62,12 @@ test('direct decoder on the CPU matches the PyTorch reference (wasm and the buil
   const ids = (process.env.NSF_DIRECT_IDS ?? 'a,b').split(',');
   const { meta, bin } = vocoderFromZtm(parseZtm(ab(fs.readFileSync(path.join(dir, `${voice}.ztm`)))));
   assert.equal(meta.noiseBranch, 'direct');
-  const builds = ['wasm', ...['avx512', 'avx2', 'sse41'].filter((b) => fs.existsSync(path.join(root, `native/x86/build/zen_tts_${b}.node`)))];
+  const nativePath = (b) => path.join(root, b === 'neon' ? 'native/arm64/build' : 'native/x86/build', `zen_tts_${b}.node`);
+  const builds = ['wasm', ...['avx512', 'avx2', 'sse41', 'neon'].filter((b) => fs.existsSync(nativePath(b)))];
   for (const b of builds) {
     const k = await CpuKernels.create(fs.readFileSync(path.join(root, 'cpu/tts-cpu.wasm')));
     if (b !== 'wasm') {
-      try { k.useNative(createRequire(import.meta.url)(path.join(root, `native/x86/build/zen_tts_${b}.node`))); } catch { continue; }
+      try { k.useNative(createRequire(import.meta.url)(nativePath(b))); } catch { continue; }
     }
     const dec = new CpuNsfDecoder(k, nsfExportToWeights(meta, bin), 1234, nsfF0Norm(meta), nsfOutputGain(meta));
     for (const id of ids) {

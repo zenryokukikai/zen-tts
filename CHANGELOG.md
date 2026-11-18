@@ -1,5 +1,13 @@
 # 変更履歴
 
+## 1.4.0
+
+- `zen-tts/node` に、arm64（macOS・Linux）向けのネイティブカーネル（NEON）を追加しました。`pnpm run build:native` で作ると、ロード時に使用します（`tts.kernel` は `'neon'`）。作っていないときは、これまでどおり WASM で動きます。
+  - 音は WASM 版とビット単位で同じです（`-ffp-contract=off`、FMA なし）。
+  - Apple M3 Max（1 スレッド）で、WASM の約 1.13 倍の速さです。
+- `pnpm run build:native` は、マシンに合わせて x86-64 用か arm64 用かを選んで作ります。
+- 声のファイル（`.ztm`）は 1.3.0 と同じです（https://tts-models.zenryoku.work/v1.3.0/ ）。
+
 ## 1.3.0
 
 - 読みを改善しました（英単語、「〜はね」、長い金額や単位つきの数字、二色 など）。読みのモデルを新しくしています。

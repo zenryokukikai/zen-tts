@@ -1,12 +1,14 @@
-// Native x86-64 build of native/tts-cpu.c for zen-tts/node: the same C source with the wasm SIMD128
-// intrinsics mapped to SSE4.1 (wasm_simd128.h here), as a node addon. JS passes the wasm memory's ArrayBuffer and the
+// Native build of native/tts-cpu.c for zen-tts/node: the same C source with the wasm SIMD128 intrinsics mapped to
+// SSE4.1 (x86-64: wasm_simd128.h here) or NEON (arm64: native/arm64/wasm_simd128.h, wide kernels native/arm64/wide.c), as a node addon. JS passes the wasm memory's ArrayBuffer and the
 // same byte offsets as to the wasm kernels, so CpuKernels runs unchanged on either. Build: native/x86/build.sh.
 #include <node_api.h>
 #include <stdint.h>
 #define export_name(n) used
 #include "../tts-cpu.c"
-#ifdef WIDE
+#if defined(WIDE)
 #include "wide.c"
+#elif defined(__aarch64__)
+#include "../arm64/wide.c"
 #endif
 
 typedef float f;

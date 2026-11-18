@@ -2,7 +2,7 @@
 
 日本語のニューラル音声合成（TTS）。5 つの感情スタイルを連続値で混合し、文中で時間的に遷移させられます。G2P からデコーダまでブラウザ内（WebGPU / WASM SIMD）と Node.js（CPU）で動作します。
 
-バージョン 1.3.0。4 voices（voice ごとに独立したモデル。G2P は共通）。voice のモデルは 1 ファイル（`.ztm`）で CDN から配布します（「モデルファイル」）。
+バージョン 1.4.0。4 voices（voice ごとに独立したモデル。G2P は共通）。voice のモデルは 1 ファイル（`.ztm`）で CDN から配布します（「モデルファイル」）。
 
 | voice | id | model | 特徴 |
 |---|---|---|---|
@@ -38,15 +38,15 @@ npm レジストリには公開していません。GitHub から指定します
 
 ```sh
 # npm
-npm i github:zenryokukikai/zen-tts#v1.3.0
+npm i github:zenryokukikai/zen-tts#v1.4.0
 # pnpm
-pnpm add github:zenryokukikai/zen-tts#v1.3.0
+pnpm add github:zenryokukikai/zen-tts#v1.4.0
 # yarn
-yarn add github:zenryokukikai/zen-tts#v1.3.0
+yarn add github:zenryokukikai/zen-tts#v1.4.0
 ```
 
 - Node.js 26.12.1（`.mise.toml` で固定、`mise install`）。開発は pnpm。
-- `#v1.3.0` はタグまたはコミットハッシュで固定してください。
+- `#v1.4.0` はタグまたはコミットハッシュで固定してください。
 - voice の重み（`.ztm`）はリポジトリに含まれません。CDN から読み込むか、ダウンロードして自分のサーバーに置きます（「モデルファイル」）。G2P（`models/g2p/`）はリポジトリに同梱。
 
 ## デモ
@@ -103,7 +103,7 @@ await tts.speak('落ち着いて聞いてください。もう我慢できませ
 - `speed`・`pitch`：下の「速さと高さ」を参照。`speakStream` でも同じ。
 - `speakWith(text, { blend, labels, f0Add, durScale, speed, pitch })`：音単位の F0 加算・長さ倍率・アクセントラベル、文全体の速さ・高さを与えて合成（デモのイントネーション編集が使用）。
 - 感情名：`neutral`、`happy`、`sad`、`angry`、`apologetic`。
-- export：`VERSION`（`'1.3.0'`）、`VOICE`（既定 `'marine'`）、`VOICES`、`ztmUrl(id)`（その voice の CDN の URL）、`ZTM_BASE_URL`、`SPEED_MIN`・`SPEED_MAX`・`PITCH_MIN`・`PITCH_MAX`（速さと高さの範囲）。`tts.voice` は使用中の voice id。
+- export：`VERSION`（`'1.4.0'`）、`VOICE`（既定 `'marine'`）、`VOICES`、`ztmUrl(id)`（その voice の CDN の URL）、`ZTM_BASE_URL`、`SPEED_MIN`・`SPEED_MAX`・`PITCH_MIN`・`PITCH_MAX`（速さと高さの範囲）。`tts.voice` は使用中の voice id。
 - `EMOTION_CURVES`：`ease`、`linear`、`fast-start`、`late-surge`、`switch`、`steps`、`hill`、`valley`、`wave`。
 
 ## 速さと高さ
@@ -153,7 +153,7 @@ await tts.speak('落ち着いて聞いてください。もう我慢できませ
 
 ```sh
 pnpm add github:zenryokukikai/zen-tts
-pnpm run build:native                            # 任意：x86-64 の Linux で速いネイティブ版を作る（clang 16 以降）
+pnpm run build:native                            # 任意：速いネイティブ版を作る（x86-64 の Linux：clang 16 以降、arm64 の macOS / Linux：clang）
 ```
 
 ```js
@@ -162,7 +162,7 @@ import { writeFileSync } from 'node:fs';
 
 // model：.ztm の URL（起動時に fetch）かローカルのパス。G2P はパッケージの models/g2p/
 const tts = await ZenTtsNode.load({ model: ztmUrl('kikka') });   // 例：{ model: './kikka.ztm' }
-console.log(tts.kernel, tts.voice);   // 'avx512' | 'avx2' | 'sse41'（ネイティブ版）か 'wasm'、声の id
+console.log(tts.kernel, tts.voice);   // 'avx512' | 'avx2' | 'sse41' | 'neon'（ネイティブ版）か 'wasm'、声の id
 
 const r = await tts.speak('本日はご来店いただき、ありがとうございます。', { emotion: { happy: 70, neutral: 30 } });
 writeFileSync('voice.wav', wavBytes(r.pcm));   // r.pcm: Float32Array、44.1 kHz、モノラル
@@ -229,7 +229,7 @@ for await (const c of tts.speakStream('こんにちは。全力マリンです�
 
 ## モデルファイル
 
-voice の重みは 1 voice 1 ファイル（`.ztm`、形式は [docs/ztm-format.md](docs/ztm-format.md)）で CDN から配布します。リポジトリには含みません。1.3.0 の声は 1.2.2 と同じです（新しい読みのモデルに合わせてファイルを作り直しています）。
+voice の重みは 1 voice 1 ファイル（`.ztm`、形式は [docs/ztm-format.md](docs/ztm-format.md)）で CDN から配布します。リポジトリには含みません。1.3.0 の声は 1.2.2 と同じです（新しい読みのモデルに合わせてファイルを作り直しています）。1.4.0 は 1.3.0 と同じファイルを使います。
 
 | voice | URL | サイズ | sha256 |
 |---|---|---|---|
@@ -249,9 +249,12 @@ voice の重みは 1 voice 1 ファイル（`.ztm`、形式は [docs/ztm-format.
 
 1.1.0 の `.ztm`（https://tts-models.zenryoku.work/v1.1.0/<id>.ztm ）も、1.2.0 以降のランタイムでそのまま読み込めます（同じ音が出ます）。1.0.0 の 4 ファイル構成（`tts/`・`decoder/`・`voices/<id>/`）も、`voice` オプションでそのまま読み込めます。そのファイルは v1.0.0 タグの `models/` にあります（https://github.com/zenryokukikai/zen-tts/tree/v1.0.0/models ）。
 
-### ネイティブカーネル（x86-64、Node.js）
+### ネイティブカーネル（Node.js）
 
-`native/tts-cpu.c` を x86-64 向けにビルドした Node-API アドオン（AVX-512 / AVX2 / SSE4.1）。`pnpm run build:native` で `native/x86/build/` に出力すると `zen-tts/node` がロード時に使用します（clang 16+、`-ffp-contract=off`）。ブラウザでは使用しません。
+`native/tts-cpu.c` をビルドした Node-API アドオンです。`pnpm run build:native` で作ると、`zen-tts/node` がロード時に使用します（`-ffp-contract=off`。音は WASM 版とビット単位で同じです）。ブラウザでは使用しません。
+
+- x86-64 の Linux：AVX-512 / AVX2 / SSE4.1 の 3 つを `native/x86/build/` に出力します（clang 16 以降）。
+- arm64 の macOS / Linux：NEON 版を `native/arm64/build/` に出力します（clang）。
 
 ## ほかの TTS との比較（大きさと速さ）
 

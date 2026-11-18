@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import os from 'node:os';
 import { CpuOwnTts } from '../dist/runtime/cpu-tts.js';
 import { nsfExportToWeights } from '../dist/runtime/nsf-weights.js';
 import { withBuiltinDict } from '../dist/runtime/builtin-dict.js';
@@ -43,8 +44,8 @@ const browserCpu = (text, o) => {
 };
 const refAudio = cases.map((c) => browserCpu(c.text, c.o));
 
-const result = { node: process.version, cpu: (fs.readFileSync('/proc/cpuinfo', 'utf8').match(/model name\s*:\s*(.*)/) ?? [])[1], kernels: {} };
-for (const kernel of ['avx512', 'avx2', 'sse41', 'wasm']) {
+const result = { node: process.version, arch: process.arch, cpu: os.cpus()[0]?.model, kernels: {} };
+for (const kernel of ['avx512', 'avx2', 'sse41', 'neon', 'wasm']) {
   let tts;
   try { tts = await ZenTtsNode.load({ model, ...(kernel === 'wasm' ? { backend: 'wasm' } : { backend: 'native', kernel }) }); }
   catch (e) { result.kernels[kernel] = { error: String(e.message ?? e) }; console.log(kernel, 'skip:', e.message); continue; }
